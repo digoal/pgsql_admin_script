@@ -96,6 +96,24 @@ do
 psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select * from pg_extension'
 done
 
+echo "----->>>---->>>  用户使用了多少种数据类型: "
+for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
+do
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),b.typname,count(*) from pg_attribute a,pg_type b where a.atttypid=b.oid and a.attrelid in (select oid from pg_class where relnamespace not in (select oid from pg_namespace where nspname ~ $$^pg_$$ or nspname=$$information_schema$$)) group by 1,2 order by 3 desc'
+done
+
+echo "----->>>---->>>  用户创建了多少对象: "
+for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
+do
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),rolname,nspname,relkind,count(*) from pg_class a,pg_authid b,pg_namespace c where a.relnamespace=c.oid and a.relowner=b.oid and nspname !~ $$^pg_$$ and nspname<>$$information_schema$$ group by 1,2,3,4 order by 5 desc'
+done
+
+echo "----->>>---->>>  用户对象占用空间的柱状图: "
+for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
+do
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select buk,pg_size_pretty(min),pg_size_pretty(max),cnt from( select row_number() over (partition by buk order by tsize),tsize,buk,min(tsize) over (partition by buk),max(tsize) over (partition by buk),count(*) over (partition by buk) cnt from ( select pg_relation_size(a.oid) tsize, width_bucket(pg_relation_size(a.oid),tmin,tmax,10) buk from (select min(pg_relation_size(a.oid)) tmin,max(pg_relation_size(a.oid)) tmax from pg_class a,pg_namespace c where a.relnamespace=c.oid and nspname !~ $$^pg_$$ and nspname<>$$information_schema$$) t, pg_class a,pg_namespace c where a.relnamespace=c.oid and nspname !~ $$^pg_$$ and nspname<>$$information_schema$$ ) t)t where row_number=1;'
+done
+
 echo "----->>>---->>>  当前用户的操作系统定时任务: "
 crontab -l
 echo "建议: "
@@ -910,6 +928,6 @@ adds
 cd $pwd
 return 0
 
-#  备注, roadmap
+#  备注
 #  csv日志分析需要优化
 
