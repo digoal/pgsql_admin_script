@@ -3,15 +3,18 @@
 # 已在CentOS 6.x上进行测试
 # author: digoal
 # 2015-10
+# 用法 . ./generate_report.sh >/tmp/report.log 2>&1
 
+# 请将以下变量修改为与当前环境一致, 并且确保使用这个配置连接任何数据库都不需要输入密码
+export PGDATA=/data01/pg_root_1921
 export PGHOST=127.0.0.1
 export PGPORT=1921
 export PGDATABASE=postgres
 export PGUSER=postgres
-export PGDATA=/data01/pg_root_1921
 export PGHOME=/opt/pgsql
-export DATE=`date +"%Y%m%d%H%M"`
 
+
+export DATE=`date +"%Y%m%d%H%M"`
 export LD_LIBRARY_PATH=$PGHOME/lib:/lib64:/usr/lib64:/usr/local/lib64:/lib:/usr/lib:/usr/local/lib:$LD_LIBRARY_PATH
 export PATH=$PGHOME/bin:$PATH:.
 
@@ -19,48 +22,86 @@ export PATH=$PGHOME/bin:$PATH:.
 # 记住当前目录
 PWD=`pwd`
 
-
-echo "----->>>---->>>  基本信息: "
-echo "----->>>---->>>  当前时间: "
-echo "$DATE"
-echo "----->>>---->>>  主机名: "
-hostname -s
-echo "----->>>---->>>  主机网络信息: "
-ifconfig
-echo "----->>>---->>>  操作系统内核: "
-uname -a
-echo "----->>>---->>>  内存(MB): "
-free -m
-echo "----->>>---->>>  CPU: "
-lscpu
-echo "----->>>---->>>  块设备: "
-lsblk
-echo "----->>>---->>>  拓扑: "
-lstopo-no-graphics
-echo "----->>>---->>>  数据库版本: "
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select version()'
-echo "----->>>---->>>  用户已安装的插件版本: "
-for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
-do
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select * from pg_extension'
-done
-echo "----->>>---->>>  操作系统配置: "
-echo "----->>>---->>>  /etc/sysctl.conf "
-grep "^[a-z]" /etc/sysctl.conf
-echo "----->>>---->>>  /etc/security/limits.conf "
-grep -v "^#" /etc/security/limits.conf|grep -v "^$"
-echo "----->>>---->>>  /etc/security/limits.d/*.conf "
-grep -v "^#" /etc/security/limits.d/*.conf|grep -v "^$"
-echo "----->>>---->>>  /etc/sysconfig/iptables "
-cat /etc/sysconfig/iptables
-echo -e "\n"
-
-
 # 获取postgresql日志目录
 pg_log_dir=`grep '^\ *[a-z]' $PGDATA/postgresql.conf|awk -F "#" '{print $1}'|grep log_directory|awk -F "=" '{print $2}'`
 
 # 检查是否standby
 is_standby=`psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE -q -A -t -c 'select pg_is_in_recovery()'`
+
+
+echo "    ----- PostgreSQL 巡检报告 -----  "
+echo "    ===== $DATE        =====  "
+
+
+if [ $is_standby == 't' ]; then
+echo "    ===== 这是standby节点     =====  "
+else
+echo "    ===== 这是primary节点     =====  "
+fi
+echo ""
+
+
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo "|                      操作系统信息                       |"
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo ""
+
+echo "----->>>---->>>  主机名: "
+hostname -s
+echo ""
+echo "----->>>---->>>  主机网络信息: "
+ifconfig
+echo ""
+echo "----->>>---->>>  操作系统内核: "
+uname -a
+echo ""
+echo "----->>>---->>>  内存(MB): "
+free -m
+echo ""
+echo "----->>>---->>>  CPU: "
+lscpu
+echo ""
+echo "----->>>---->>>  块设备: "
+lsblk
+echo ""
+echo "----->>>---->>>  拓扑: "
+lstopo-no-graphics
+echo ""
+echo "----->>>---->>>  操作系统配置: "
+echo "----->>>---->>>  /etc/sysctl.conf "
+grep "^[a-z]" /etc/sysctl.conf
+echo ""
+echo "----->>>---->>>  /etc/security/limits.conf "
+grep -v "^#" /etc/security/limits.conf|grep -v "^$"
+echo ""
+echo "----->>>---->>>  /etc/security/limits.d/*.conf "
+grep -v "^#" /etc/security/limits.d/*.conf|grep -v "^$"
+echo ""
+echo "----->>>---->>>  /etc/sysconfig/iptables "
+cat /etc/sysconfig/iptables
+echo -e "\n"
+
+
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo "|                       数据库信息                        |"
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo ""
+
+echo "----->>>---->>>  数据库版本: "
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select version()'
+
+echo "----->>>---->>>  用户已安装的插件版本: "
+for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
+do
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select * from pg_extension'
+done
+
+echo "----->>>---->>>  当前用户的操作系统定时任务: "
+crontab -l
+echo "建议: "
+echo "    仔细检查定时任务的必要性, 以及定时任务的成功与否的评判标准, 以及监控措施. "
+echo "    请以启动数据库的OS用户执行本脚本. "
+echo -e "\n"
 
 
 common() {
@@ -126,7 +167,7 @@ max_standby_streaming_delay = 300s  # 如果备库要被用于只读, 有大的�
 wal_receiver_status_interval = 1s
 hot_standby_feedback = on
 random_page_cost = 2  # 根据IO能力调整
-effective_cache_size = 100GB  # 调整为与内存一样大, 或者略小. 用来评估OS PAGE CACHE可以用到的内存大小.
+effective_cache_size = 100GB  # 调整为与内存一样大, 或者略小(减去shared_buffer). 用来评估OS PAGE CACHE可以用到的内存大小.
 log_destination = 'csvlog'
 logging_collector = on
 log_truncate_on_rotation = on
@@ -210,8 +251,19 @@ vi /etc/security/limits.conf
 * hard    memlock unlimited
 
 rm -f /etc/security/limits.d/90-nproc.conf
-
 \n "
+
+echo "----->>>---->>>  用户或数据库级别定制参数: "
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select * from pg_db_role_setting'
+echo "建议: "
+echo "    定制参数需要关注, 优先级高于数据库的启动参数和配置文件中的参数, 特别是排错时需要关注. "
+echo -e "\n"
+
+
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo "|                   数据库错误日志分析                    |"
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo ""
 
 echo "----->>>---->>>  获取错误日志信息: "
 awk -F "," '{print $12" "$13}' *.csv |grep -E "WARNING|ERROR|FATAL|PANIC"|sort|uniq -c|sort -rn
@@ -231,24 +283,11 @@ echo "建议: "
 echo "    认证失败次数很多时, 可能是有用户在暴力破解, 建议使用auth_delay插件防止暴力破解. "
 echo -e "\n"
 
-echo "----->>>---->>>  SQL注入风险分析: "
-grep exec_simple_query *.csv|awk -F "," '{print $2,$3,$5,$24}'|sed 's/\:[0-9]*//g'|sort|uniq -c|sort -n -r
-echo "建议: "
-echo "    建议程序使用绑定变量规避SQL注入风险, 或者程序端使用SQL注入过滤插件. "
-echo -e "\n"
 
-echo "----->>>---->>>  检查是否使用了a-z 0-9 _ 以外的字母作为对象名: "
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select distinct datname from (select datname,regexp_split_to_table(datname,$$$$) word from pg_database) t where (not (ascii(word) >=97 and ascii(word) <=122)) and (not (ascii(word) >=48 and ascii(word) <=57)) and ascii(word)<>95'
-for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
-do
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),relname,relkind from (select relname,relkind,regexp_split_to_table(relname,$$$$) word from pg_class) t where (not (ascii(word) >=97 and ascii(word) <=122)) and (not (ascii(word) >=48 and ascii(word) <=57)) and ascii(word)<>95 group by 1,2,3'
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(), typname from (select typname,regexp_split_to_table(typname,$$$$) word from pg_type) t where (not (ascii(word) >=97 and ascii(word) <=122)) and (not (ascii(word) >=48 and ascii(word) <=57)) and ascii(word)<>95 group by 1,2'
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(), proname from (select proname,regexp_split_to_table(proname,$$$$) word from pg_proc where proname !~ $$^RI_FKey_$$) t where (not (ascii(word) >=97 and ascii(word) <=122)) and (not (ascii(word) >=48 and ascii(word) <=57)) and ascii(word)<>95 group by 1,2'
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),nspname,relname,attname from (select nspname,relname,attname,regexp_split_to_table(attname,$$$$) word from pg_class a,pg_attribute b,pg_namespace c where a.oid=b.attrelid and a.relnamespace=c.oid ) t where (not (ascii(word) >=97 and ascii(word) <=122)) and (not (ascii(word) >=48 and ascii(word) <=57)) and ascii(word)<>95 group by 1,2,3,4'
-done
-echo "建议: "
-echo "    建议任何identify都只使用 a-z, 0-9, _ (例如表名, 列名, 视图名, 函数名, 类型名, 数据库名, schema名, 物化视图名等等). "
-echo -e "\n"
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo "|                   数据库慢SQL日志分析                   |"
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo ""
 
 echo "----->>>---->>>  慢查询统计: "
 cat *.csv|awk -F "," '{print $1" "$2" "$3" "$8" "$14}' |grep "duration:"|grep -v "plan:"|awk '{print $1" "$4" "$5" "$6}'|sort|uniq -c|sort -rn
@@ -268,11 +307,11 @@ echo "    输出格式(条数,日期,用户,数据库,QUERY). "
 echo "    慢查询反映执行时间超过auto_explain.log_min_duration的SQL, 可以根据实际情况分析数据库或SQL语句是否有优化空间, 分析csvlog中auto_explain的输出可以了解语句超时时的执行计划详情. "
 echo -e "\n"
 
-echo "----->>>---->>>  当前用户的操作系统定时任务: "
-crontab -l
-echo "建议: "
-echo "    仔细检查定时任务的必要性, 以及定时任务的成功与否的评判标准, 以及监控措施. "
-echo -e "\n"
+
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo "|                   数据库空间使用分析                    |"
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo ""
 
 echo "----->>>---->>>  输出文件系统剩余空间: "
 df -m
@@ -299,37 +338,25 @@ echo "建议: "
 echo "    注意检查数据库的大小, 是否需要清理历史数据. "
 echo -e "\n"
 
-echo "----->>>---->>>  TOP 5 SQL : total_cpu_time "
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -x -c 'select c.rolname,b.datname,a.total_time/a.calls per_call_time,a.* from pg_stat_statements a,pg_database b,pg_authid c where a.userid=c.oid and a.dbid=b.oid order by a.total_time desc limit 5'
+echo "----->>>---->>>  TOP 10 size对象: "
+for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
+do
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),b.nspname,c.relname,c.relkind,pg_size_pretty(pg_relation_size(c.oid)),a.seq_scan,a.seq_tup_read,a.idx_scan,a.idx_tup_fetch,a.n_tup_ins,a.n_tup_upd,a.n_tup_del,a.n_tup_hot_upd,a.n_live_tup,a.n_dead_tup from pg_stat_all_tables a, pg_class c,pg_namespace b where c.relnamespace=b.oid and c.relkind=$$r$$ and a.relid=c.oid order by pg_relation_size(c.oid) desc limit 10'
+done
 echo "建议: "
-echo "    检查SQL是否有优化空间, 配合auto_explain插件在csvlog中观察LONG SQL的执行计划是否正确. "
+echo "    经验值: 单表超过8GB, 并且这个表需要频繁更新 或 删除+插入的话, 建议对表根据业务逻辑进行合理拆分后获得更好的性能, 以及便于对膨胀索引进行维护; 如果是只读的表, 建议适当结合SQL语句进行优化. "
 echo -e "\n"
 
-# 重置pg_stat_statements统计信息
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -A -c 'select pg_stat_statements_reset()'
+
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo "|                     数据库连接分析                      |"
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo ""
 
 echo "----->>>---->>>  当前活跃度: "
 psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select now(),state,count(*) from pg_stat_activity group by 1,2'
 echo "建议: "
 echo "    如果active状态很多, 说明数据库比较繁忙. 如果idle in transaction很多, 说明业务逻辑设计可能有问题. 如果idle很多, 可能使用了连接池, 并且可能没有自动回收连接到连接池的最小连接数. "
-echo -e "\n"
-
-echo "----->>>---->>>  用户连接数限制: "
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select a.rolname,a.rolconnlimit,b.connects from pg_authid a,(select usename,count(*) connects from pg_stat_activity group by usename) b where a.rolname=b.usename order by b.connects desc'
-echo "建议: "
-echo "    给用户设置足够的连接数, alter role ... CONNECTION LIMIT . "
-echo -e "\n"
-
-echo "----->>>---->>>  用户密码到期时间: "
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select rolname,rolvaliduntil from pg_authid order by rolvaliduntil'
-echo "建议: "
-echo "    到期后, 用户将无法登陆, 记得修改密码, 同时将密码到期时间延长到某个时间或无限时间, alter role ... VALID UNTIL 'timestamp' . "
-echo -e "\n"
-
-echo "----->>>---->>>  数据库连接限制: "
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select a.datname, a.datconnlimit, b.connects from pg_database a,(select datname,count(*) connects from pg_stat_activity group by datname) b where a.datname=b.datname order by b.connects desc'
-echo "建议: "
-echo "    给数据库设置足够的连接数, alter database ... CONNECTION LIMIT . "
 echo -e "\n"
 
 echo "----->>>---->>>  总剩余连接数: "
@@ -338,13 +365,28 @@ echo "建议: "
 echo "    给超级用户和普通用户设置足够的连接, 以免不能登录数据库. "
 echo -e "\n"
 
-echo "----->>>---->>>  TOP 10 size对象: "
-for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
-do
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),b.nspname,c.relname,c.relkind,pg_size_pretty(pg_relation_size(c.oid)),a.seq_scan,a.seq_tup_read,a.idx_scan,a.idx_tup_fetch,a.n_tup_ins,a.n_tup_upd,a.n_tup_del,a.n_tup_hot_upd,a.n_live_tup,a.n_dead_tup from pg_stat_all_tables a, pg_class c,pg_namespace b where c.relnamespace=b.oid and c.relkind=$$r$$ and a.relid=c.oid order by pg_relation_size(c.oid) desc limit 10'
-done
+echo "----->>>---->>>  用户连接数限制: "
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select a.rolname,a.rolconnlimit,b.connects from pg_authid a,(select usename,count(*) connects from pg_stat_activity group by usename) b where a.rolname=b.usename order by b.connects desc'
 echo "建议: "
-echo "    经验值: 单表超过8GB, 并且这个表需要频繁更新 或 删除+插入的话, 建议对表根据业务逻辑进行合理拆分后获得更好的性能, 以及便于对膨胀索引进行维护; 如果是只读的表, 建议适当结合SQL语句进行优化. "
+echo "    给用户设置足够的连接数, alter role ... CONNECTION LIMIT . "
+echo -e "\n"
+
+echo "----->>>---->>>  数据库连接限制: "
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select a.datname, a.datconnlimit, b.connects from pg_database a,(select datname,count(*) connects from pg_stat_activity group by datname) b where a.datname=b.datname order by b.connects desc'
+echo "建议: "
+echo "    给数据库设置足够的连接数, alter database ... CONNECTION LIMIT . "
+echo -e "\n"
+
+
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo "|                     数据库性能分析                      |"
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo ""
+
+echo "----->>>---->>>  TOP 5 SQL : total_cpu_time "
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -x -c 'select c.rolname,b.datname,a.total_time/a.calls per_call_time,a.* from pg_stat_statements a,pg_database b,pg_authid c where a.userid=c.oid and a.dbid=b.oid order by a.total_time desc limit 5'
+echo "建议: "
+echo "    检查SQL是否有优化空间, 配合auto_explain插件在csvlog中观察LONG SQL的执行计划是否正确. "
 echo -e "\n"
 
 echo "----->>>---->>>  索引数超过4并且SIZE大于10MB的表: "
@@ -364,6 +406,26 @@ done
 echo "建议: "
 echo "    建议和应用开发人员确认后, 删除不需要的索引. "
 echo -e "\n"
+
+echo "----->>>---->>>  数据库统计信息, 回滚比例, 命中比例, 数据块读写时间, 死锁, 复制冲突: "
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select datname,round(100*(xact_rollback::numeric/(case when xact_commit > 0 then xact_commit else 1 end + xact_rollback)),2)||$$ %$$ rollback_ratio, round(100*(blks_hit::numeric/(case when blks_read>0 then blks_read else 1 end + blks_hit)),2)||$$ %$$ hit_ratio, blk_read_time, blk_write_time, conflicts, deadlocks from pg_stat_database'
+echo "建议: "
+echo "    回滚比例大说明业务逻辑可能有问题, 命中率小说明shared_buffer要加大, 数据块读写时间长说明块设备的IO性能要提升, 死锁次数多说明业务逻辑有问题, 复制冲突次数多说明备库可能在跑LONG SQL. "
+echo -e "\n"
+
+echo "----->>>---->>>  检查点, bgwriter 统计信息: "
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -x -c 'select * from pg_stat_bgwriter'
+echo "建议: "
+echo "    checkpoint_write_time多说明检查点持续时间长, 检查点过程中产生了较多的脏页. "
+echo "    checkpoint_sync_time代表检查点开始时的shared buffer中的脏页被同步到磁盘的时间, 如果时间过长, 并且数据库在检查点时性能较差, 考虑一下提升块设备的IOPS能力. "
+echo "    buffers_backend_fsync太多说明需要加大shared buffer 或者 减小bgwriter_delay参数. "
+echo -e "\n"
+
+
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo "|                     数据库垃圾分析                      |"
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo ""
 
 echo "----->>>---->>>  表引膨胀检查: "
 for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
@@ -546,6 +608,12 @@ echo "    应用开发时, 注意及时删除不需要使用的大对象, 使用
 echo "    参考 http://www.postgresql.org/docs/9.4/static/largeobjects.html "
 echo -e "\n"
 
+
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo "|                     数据库年龄分析                      |"
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo ""
+
 echo "----->>>---->>>  数据库年龄: "
 psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select datname,age(datfrozenxid),2^31-age(datfrozenxid) age_remain from pg_database order by age(datfrozenxid) desc'
 echo "建议: "
@@ -561,21 +629,19 @@ echo "建议: "
 echo "    表的年龄正常情况下应该小于vacuum_freeze_table_age, 如果剩余年龄小于5亿, 建议人为干预, 将LONG SQL或事务杀掉后, 执行vacuum freeze . "
 echo -e "\n"
 
-echo "----->>>---->>>  继承关系检查: "
-for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
-do
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select inhrelid::regclass,inhparent::regclass,inhseqno from pg_inherits order by 2,3'
-done
+echo "----->>>---->>>  长事务, 2PC: "
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -x -c 'select datname,usename,query,xact_start,now()-xact_start xact_duration,query_start,now()-query_start query_duration,state from pg_stat_activity where state<>$$idle$$ and (backend_xid is not null or backend_xmin is not null) and now()-xact_start > interval $$30 min$$ order by xact_start'
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -x -c 'select name,statement,prepare_time,now()-prepare_time,parameter_types,from_sql from pg_prepared_statements where now()-prepare_time > interval $$30 min$$ order by prepare_time'
 echo "建议: "
-echo "    如果使用继承来实现分区表, 注意分区表的触发器中逻辑是否正常, 对于时间模式的分区表是否需要及时加分区, 修改触发器函数 . "
-echo "    建议继承表的权限统一, 如果权限不一致, 可能导致某些用户查询时权限不足. "
+echo "    长事务过程中产生的垃圾, 无法回收, 建议不要在数据库中运行LONG SQL, 或者错开DML高峰时间去运行LONG SQL. 2PC事务一定要记得尽快结束掉, 否则可能会导致数据库膨胀. "
+echo "    参考: http://blog.163.com/digoal@126/blog/static/1638770402015329115636287/ "
 echo -e "\n"
 
-echo "----->>>---->>>  用户或数据库级别定制参数: "
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select * from pg_db_role_setting'
-echo "建议: "
-echo "    定制参数需要关注, 优先级高于数据库的启动参数和配置文件中的参数, 特别是排错时需要关注. "
-echo -e "\n"
+
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo "|               数据库XLOG, 流复制状态分析                |"
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo ""
 
 echo "----->>>---->>>  是否开启归档, 自动垃圾回收: "
 psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select name,setting from pg_settings where name in ($$archive_mode$$,$$autovacuum$$,$$archive_command$$)'
@@ -601,26 +667,124 @@ echo "建议: "
 echo "    如果restart_lsn和当前XLOG相差非常大的字节数, 需要排查slot的订阅者是否能正常接收XLOG, 或者订阅者是否正常. 长时间不将slot的数据取走, pg_xlog目录可能会撑爆. "
 echo -e "\n"
 
-echo "----->>>---->>>  数据库统计信息, 回滚比例, 命中比例, 数据块读写时间, 死锁, 复制冲突: "
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select datname,round(100*(xact_rollback::numeric/(case when xact_commit > 0 then xact_commit else 1 end + xact_rollback)),2)||$$ %$$ rollback_ratio, round(100*(blks_hit::numeric/(case when blks_read>0 then blks_read else 1 end + blks_hit)),2)||$$ %$$ hit_ratio, blk_read_time, blk_write_time, conflicts, deadlocks from pg_stat_database'
+
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo "|                数据库安全或潜在风险分析                 |"
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo ""
+
+echo "----->>>---->>>  密码泄露检查: "
+echo "    检查 ~/.psql_history  "
+grep -i "password" ~/.psql_history|grep -i -E "role|group|user"
+echo "    检查 *.csv  "
+grep -i -r -E "role|group|user" *.csv|grep -i "password"|grep -i -E "create|alter"
+echo "    检查 $PGDATA/recovery.*  "
+grep -i "password" ../recovery.*
+echo "    检查 pg_stat_statements  "
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -c 'select query from pg_stat_statements where (query ~* $$group$$ or query ~* $$user$$ or query ~* $$role$$) and query ~* $$password$$'
+echo "    检查 pg_authid  "
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select * from pg_authid where rolpassword !~ $$^md5$$ or length(rolpassword)<>35'
+echo "    检查 pg_user_mappings, pg_views  "
+for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
+do
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -c 'select current_database(),* from pg_user_mappings where umoptions::text ~* $$password$$'
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -c 'select current_database(),* from pg_views where definition ~* $$password$$ and definition ~* $$dblink$$'
+done
 echo "建议: "
-echo "    回滚比例大说明业务逻辑可能有问题, 命中率小说明shared_buffer要加大, 数据块读写时间长说明块设备的IO性能要提升, 死锁次数多说明业务逻辑有问题, 复制冲突次数多说明备库可能在跑LONG SQL. "
+echo "    如果以上输出显示密码已泄露, 尽快修改, 并通过参数避免密码又被记录到以上文件中(psql -n) (set log_statement='none'; set log_min_duration_statement=-1; set log_duration=off; set pg_stat_statements.track_utility=off;) . "
+echo "    明文密码不安全, 建议使用create|alter role ... encrypted password. "
+echo "    在fdw, dblink based view中不建议使用密码明文. "
+echo "    在recovery.*的配置中不要使用密码, 不安全, 可以使用.pgpass配置密码 . "
 echo -e "\n"
 
-echo "----->>>---->>>  检查点, bgwriter 统计信息: "
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -x -c 'select * from pg_stat_bgwriter'
+echo "----->>>---->>>  用户密码到期时间: "
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select rolname,rolvaliduntil from pg_authid order by rolvaliduntil'
 echo "建议: "
-echo "    checkpoint_write_time多说明检查点持续时间长, 检查点过程中产生了较多的脏页. "
-echo "    checkpoint_sync_time代表检查点开始时的shared buffer中的脏页被同步到磁盘的时间, 如果时间过长, 并且数据库在检查点时性能较差, 考虑一下提升块设备的IOPS能力. "
-echo "    buffers_backend_fsync太多说明需要加大shared buffer 或者 减小bgwriter_delay参数. "
+echo "    到期后, 用户将无法登陆, 记得修改密码, 同时将密码到期时间延长到某个时间或无限时间, alter role ... VALID UNTIL 'timestamp' . "
 echo -e "\n"
 
-echo "----->>>---->>>  长事务, 2PC: "
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -x -c 'select datname,usename,query,xact_start,now()-xact_start xact_duration,query_start,now()-query_start query_duration,state from pg_stat_activity where state<>$$idle$$ and (backend_xid is not null or backend_xmin is not null) order by xact_start'
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -x -c 'select name,statement,prepare_time,now()-prepare_time,parameter_types,from_sql from pg_prepared_statements order by prepare_time'
+echo "----->>>---->>>  SQL注入风险分析: "
+grep exec_simple_query *.csv|awk -F "," '{print $2,$3,$5,$24}'|sed 's/\:[0-9]*//g'|sort|uniq -c|sort -n -r
 echo "建议: "
-echo "    长事务过程中产生的垃圾, 无法回收, 建议不要在数据库中运行LONG SQL, 或者错开DML高峰时间去运行LONG SQL. 2PC事务一定要记得尽快结束掉, 否则可能会导致数据库膨胀. "
-echo "    参考: http://blog.163.com/digoal@126/blog/static/1638770402015329115636287/ "
+echo "    建议程序使用绑定变量规避SQL注入风险, 或者程序端使用SQL注入过滤插件. "
+echo -e "\n"
+
+echo "----->>>---->>>  普通用户对象上的规则安全检查: "
+for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
+do
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -c 'select current_database(),a.schemaname,a.tablename,a.rulename,a.definition from pg_rules a,pg_namespace b,pg_class c,pg_authid d where a.schemaname=b.nspname and a.tablename=c.relname and d.oid=c.relowner and not d.rolsuper union all select current_database(),a.schemaname,a.viewname,a.viewowner,a.definition from pg_views a,pg_namespace b,pg_class c,pg_authid d where a.schemaname=b.nspname and a.viewname=c.relname and d.oid=c.relowner and not d.rolsuper'
+done
+echo "建议: "
+echo "    防止普通用户在规则中设陷阱, 注意有危险的security invoker的函数调用, 超级用户可能因为规则触发后误调用这些危险函数(以invoker角色). "
+echo "    参考 http://blog.163.com/digoal@126/blog/static/16387704020155131217736/ "
+echo -e "\n"
+
+echo "----->>>---->>>  普通用户自定义函数安全检查: "
+for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
+do
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -c 'select current_database(),b.rolname,c.nspname,a.proname from pg_proc a,pg_authid b,pg_namespace c where a.proowner=b.oid and a.pronamespace=c.oid and not b.rolsuper and not a.prosecdef'
+done
+echo "建议: "
+echo "    防止普通用户在函数中设陷阱, 注意有危险的security invoker的函数调用, 超级用户可能因为触发器触发后误调用这些危险函数(以invoker角色). "
+echo "    参考 http://blog.163.com/digoal@126/blog/static/16387704020155131217736/ "
+echo -e "\n"
+
+echo "----->>>---->>>  unlogged table 和 哈希索引: "
+for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
+do
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),t3.rolname,t2.nspname,t1.relname from pg_class t1,pg_namespace t2,pg_authid t3 where t1.relnamespace=t2.oid and t1.relowner=t3.oid and t1.relpersistence=$$u$$'
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),pg_get_indexdef(oid) from pg_class where relkind=$$i$$ and pg_get_indexdef(oid) ~ $$USING hash$$'
+done
+echo "建议: "
+echo "    unlogged table和hash index不记录XLOG, 无法使用流复制或者log shipping的方式复制到standby节点, 如果在standby节点执行某些SQL, 可能导致报错或查不到数据. "
+echo "    在数据库CRASH后无法修复unlogged table和hash index, 不建议使用. "
+echo "    PITR对unlogged table和hash index也不起作用. "
+echo -e "\n"
+
+echo "----->>>---->>>  序列剩余可使用次数不足1000万次: "
+for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
+do
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off <<EOF
+create or replace function f(OUT v_datname name, OUT v_role name, OUT v_nspname name, OUT v_relname name, OUT v_times_remain int8) returns setof record as \$\$
+declare
+begin
+  v_datname := current_database();
+  for v_role,v_nspname,v_relname in select rolname,nspname,relname from pg_authid t1 , pg_class t2 , pg_namespace t3 where t1.oid=t2.relowner and t2.relnamespace=t3.oid and t2.relkind='S' 
+  LOOP
+    execute 'select (max_value-last_value)/increment_by from "'||v_nspname||'"."'||v_relname||'" where not is_cycled' into v_times_remain;
+    return next;
+  end loop;
+end;
+\$\$ language plpgsql;
+
+select * from f() where v_times_remain is not null and v_times_remain < 10240000 order by v_times_remain limit 10;
+EOF
+done
+echo "建议: "
+echo "    序列剩余使用次数到了之后, 将无法使用, 报错, 请开发人员关注. "
+echo -e "\n"
+
+echo "----->>>---->>>  触发器, 事件触发器: "
+for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
+do
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),relname,tgname,proname,tgenabled from pg_trigger t1,pg_class t2,pg_proc t3 where t1.tgfoid=t3.oid and t1.tgrelid=t2.oid'
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),rolname,proname,evtname,evtevent,evtenabled,evttags from pg_event_trigger t1,pg_proc t2,pg_authid t3 where t1.evtfoid=t2.oid and t1.evtowner=t3.oid'
+done
+echo "建议: "
+echo "    请管理员注意触发器和事件触发器的必要性. "
+echo -e "\n"
+
+echo "----->>>---->>>  检查是否使用了a-z 0-9 _ 以外的字母作为对象名: "
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select distinct datname from (select datname,regexp_split_to_table(datname,$$$$) word from pg_database) t where (not (ascii(word) >=97 and ascii(word) <=122)) and (not (ascii(word) >=48 and ascii(word) <=57)) and ascii(word)<>95'
+for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
+do
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),relname,relkind from (select relname,relkind,regexp_split_to_table(relname,$$$$) word from pg_class) t where (not (ascii(word) >=97 and ascii(word) <=122)) and (not (ascii(word) >=48 and ascii(word) <=57)) and ascii(word)<>95 group by 1,2,3'
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(), typname from (select typname,regexp_split_to_table(typname,$$$$) word from pg_type) t where (not (ascii(word) >=97 and ascii(word) <=122)) and (not (ascii(word) >=48 and ascii(word) <=57)) and ascii(word)<>95 group by 1,2'
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(), proname from (select proname,regexp_split_to_table(proname,$$$$) word from pg_proc where proname !~ $$^RI_FKey_$$) t where (not (ascii(word) >=97 and ascii(word) <=122)) and (not (ascii(word) >=48 and ascii(word) <=57)) and ascii(word)<>95 group by 1,2'
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),nspname,relname,attname from (select nspname,relname,attname,regexp_split_to_table(attname,$$$$) word from pg_class a,pg_attribute b,pg_namespace c where a.oid=b.attrelid and a.relnamespace=c.oid ) t where (not (ascii(word) >=97 and ascii(word) <=122)) and (not (ascii(word) >=48 and ascii(word) <=57)) and ascii(word)<>95 group by 1,2,3,4'
+done
+echo "建议: "
+echo "    建议任何identify都只使用 a-z, 0-9, _ (例如表名, 列名, 视图名, 函数名, 类型名, 数据库名, schema名, 物化视图名等等). "
 echo -e "\n"
 
 echo "----->>>---->>>  锁等待: "
@@ -666,88 +830,21 @@ echo "建议: "
 echo "    锁等待状态, 反映业务逻辑的问题或者SQL性能有问题, 建议深入排查持锁的SQL. "
 echo -e "\n"
 
-echo "----->>>---->>>  unlogged table 和 哈希索引: "
+echo "----->>>---->>>  继承关系检查: "
 for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
 do
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),t3.rolname,t2.nspname,t1.relname from pg_class t1,pg_namespace t2,pg_authid t3 where t1.relnamespace=t2.oid and t1.relowner=t3.oid and t1.relpersistence=$$u$$'
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),pg_get_indexdef(oid) from pg_class where relkind=$$i$$ and pg_get_indexdef(oid) ~ $$USING hash$$'
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select inhrelid::regclass,inhparent::regclass,inhseqno from pg_inherits order by 2,3'
 done
 echo "建议: "
-echo "    unlogged table和hash index不记录XLOG, 无法使用流复制或者log shipping的方式复制到standby节点, 如果在standby节点执行某些SQL, 可能导致报错或查不到数据. "
-echo "    在数据库CRASH后无法修复unlogged table和hash index, 不建议使用. "
-echo "    PITR对unlogged table和hash index也不起作用. "
+echo "    如果使用继承来实现分区表, 注意分区表的触发器中逻辑是否正常, 对于时间模式的分区表是否需要及时加分区, 修改触发器函数 . "
+echo "    建议继承表的权限统一, 如果权限不一致, 可能导致某些用户查询时权限不足. "
 echo -e "\n"
 
-echo "----->>>---->>>  触发器, 事件触发器: "
-for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
-do
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),relname,tgname,proname,tgenabled from pg_trigger t1,pg_class t2,pg_proc t3 where t1.tgfoid=t3.oid and t1.tgrelid=t2.oid'
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),rolname,proname,evtname,evtevent,evtenabled,evttags from pg_event_trigger t1,pg_proc t2,pg_authid t3 where t1.evtfoid=t2.oid and t1.evtowner=t3.oid'
-done
-echo "建议: "
-echo "    请管理员注意触发器和事件触发器的必要性. "
-echo -e "\n"
 
-echo "----->>>---->>>  序列剩余使用次数: "
-for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
-do
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off <<EOF
-create or replace function f(OUT v_datname name, OUT v_role name, OUT v_nspname name, OUT v_relname name, OUT v_times_remain int8) returns setof record as \$\$
-declare
-begin
-  v_datname := current_database();
-  for v_role,v_nspname,v_relname in select rolname,nspname,relname from pg_authid t1 , pg_class t2 , pg_namespace t3 where t1.oid=t2.relowner and t2.relnamespace=t3.oid and t2.relkind='S' 
-  LOOP
-    execute 'select (max_value-last_value)/increment_by from "'||v_nspname||'"."'||v_relname||'" where not is_cycled' into v_times_remain;
-    return next;
-  end loop;
-end;
-\$\$ language plpgsql;
-
-select * from f() where v_times_remain is not null order by v_times_remain limit 10;
-EOF
-done
-echo "建议: "
-echo "    序列剩余使用次数到了之后, 将无法使用, 报错, 请开发人员关注. "
-echo -e "\n"
-
-echo "----->>>---->>>  密码泄露检查: "
-grep -i "password" ~/.psql_history|grep -i -E "role|group|user"
-grep -i -r -E "role|group|user" *.csv|grep -i "password"|grep -i -E "create|alter"
-grep -i "password" ../recovery.*
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -c 'select query from pg_stat_statements where (query ~* $$group$$ or query ~* $$user$$ or query ~* $$role$$) and query ~* $$password$$'
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select * from pg_authid where rolpassword !~ $$^md5$$ or length(rolpassword)<>35'
-for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
-do
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -c 'select current_database(),* from pg_user_mappings where umoptions::text ~* $$password$$'
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -c 'select current_database(),* from pg_views where definition ~* $$password$$ and definition ~* $$dblink$$'
-done
-echo "建议: "
-echo "    如果以上输出显示密码已泄露, 尽快修改, 并通过参数避免密码又被记录到以上文件中(psql -n) (set log_statement='none'; set log_min_duration_statement=-1; set log_duration=off; set pg_stat_statements.track_utility=off;) . "
-echo "    明文密码不安全, 建议使用create|alter role ... encrypted password. "
-echo "    在fdw, dblink based view中不建议使用密码明文. "
-echo "    在recovery.*的配置中不要使用密码, 不安全, 可以使用.pgpass配置密码 . "
-echo -e "\n"
-
-echo "----->>>---->>>  普通用户对象上的规则安全检查: "
-for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
-do
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -c 'select current_database(),a.schemaname,a.tablename,a.rulename,a.definition from pg_rules a,pg_namespace b,pg_class c,pg_authid d where a.schemaname=b.nspname and a.tablename=c.relname and d.oid=c.relowner and not d.rolsuper union all select current_database(),a.schemaname,a.viewname,a.viewowner,a.definition from pg_views a,pg_namespace b,pg_class c,pg_authid d where a.schemaname=b.nspname and a.viewname=c.relname and d.oid=c.relowner and not d.rolsuper'
-done
-echo "建议: "
-echo "    防止普通用户在规则中设陷阱, 注意有危险的security invoker的函数调用, 超级用户可能因为规则触发后误调用这些危险函数(以invoker角色). "
-echo "    参考 http://blog.163.com/digoal@126/blog/static/16387704020155131217736/ "
-echo -e "\n"
-
-echo "----->>>---->>>  普通用户自定义函数安全检查: "
-for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
-do
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -c 'select current_database(),b.rolname,c.nspname,a.proname from pg_proc a,pg_authid b,pg_namespace c where a.proowner=b.oid and a.pronamespace=c.oid and not b.rolsuper and not a.prosecdef'
-done
-echo "建议: "
-echo "    防止普通用户在函数中设陷阱, 注意有危险的security invoker的函数调用, 超级用户可能因为触发器触发后误调用这些危险函数(以invoker角色). "
-echo "    参考 http://blog.163.com/digoal@126/blog/static/16387704020155131217736/ "
-echo -e "\n"
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo "|                      重置统计信息                       |"
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo ""
 
 echo "----->>>---->>>  重置统计信息: "
 for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
@@ -756,6 +853,9 @@ psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -c 'select pg_stat
 done
 psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -c 'select pg_stat_reset_shared($$bgwriter$$)'
 psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -c 'select pg_stat_reset_shared($$archiver$$)'
+
+echo "----->>>---->>>  重置pg_stat_statements统计信息: "
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -A -c 'select pg_stat_statements_reset()'
 
 }  # common function end
 
@@ -800,19 +900,16 @@ echo "    巡检结束后, 清理csv日志 "
 
 
 if [ $is_standby == 't' ]; then
-echo "----->>>---->>>  这是standby节点: "
-echo -e "\n"
 standby
-
 else
-echo "----->>>---->>>  这是primary节点: "
-echo -e "\n"
 primary
-
 fi
 
 common
 adds
 cd $pwd
 return 0
+
+#  备注, roadmap
+#  csv日志分析需要优化
 
