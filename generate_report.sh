@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# 已在CentOS 6.x上进行测试
+# author: digoal
+# 2015-10
+
 export PGHOST=127.0.0.1
 export PGPORT=1921
 export PGDATABASE=postgres
@@ -40,6 +44,15 @@ for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off
 do
 psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select * from pg_extension'
 done
+echo "----->>>---->>>  操作系统配置: "
+echo "----->>>---->>>  /etc/sysctl.conf "
+grep "^[a-z]" /etc/sysctl.conf
+echo "----->>>---->>>  /etc/security/limits.conf "
+grep -v "^#" /etc/security/limits.conf|grep -v "^$"
+echo "----->>>---->>>  /etc/security/limits.d/*.conf "
+grep -v "^#" /etc/security/limits.d/*.conf|grep -v "^$"
+echo "----->>>---->>>  /etc/sysconfig/iptables "
+cat /etc/sysconfig/iptables
 echo -e "\n"
 
 
@@ -325,7 +338,6 @@ echo "建议: "
 echo "    给超级用户和普通用户设置足够的连接, 以免不能登录数据库. "
 echo -e "\n"
 
-
 echo "----->>>---->>>  TOP 10 size对象: "
 for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
 do
@@ -523,8 +535,16 @@ echo "    可以等待autovacuum进行处理, 或者手工执行vacuum table . "
 echo -e "\n"
 
 echo "----->>>---->>>  未引用的大对象: "
-
-
+for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
+do
+vacuumlo -n -h $PGHOST -p $PGPORT -U $PGUSER $db -w
+echo ""
+done
+echo "建议: "
+echo "    如果大对象没有被引用时, 建议删除, 否则就类似于内存泄露, 使用vacuumlo可以删除未被引用的大对象, 例如: vacuumlo -l 1000 -h $PGHOST -p $PGPORT -U $PGUSER $db -w . "
+echo "    应用开发时, 注意及时删除不需要使用的大对象, 使用lo_unlink 或 驱动对应的API . "
+echo "    参考 http://www.postgresql.org/docs/9.4/static/largeobjects.html "
+echo -e "\n"
 
 echo "----->>>---->>>  数据库年龄: "
 psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select datname,age(datfrozenxid),2^31-age(datfrozenxid) age_remain from pg_database order by age(datfrozenxid) desc'
