@@ -3,7 +3,8 @@
 # 已在CentOS 6.x上进行测试
 # author: digoal
 # 2015-10
-# 用法 . ./generate_report.sh >/tmp/report.log 2>&1
+# 用法  . ./generate_report.sh >/tmp/report.log 2>&1
+# 生成目录   grep -E "^----->>>|^\|" /tmp/report.log | sed 's/^----->>>---->>>/    /' | sed '1 i\ \ 目录\n\n' | sed '$ a\ \n\n\ \ 正文\n\n'
 
 # 请将以下变量修改为与当前环境一致, 并且确保使用这个配置连接任何数据库都不需要输入密码
 export PGDATA=/data01/pg_root_1921
@@ -93,7 +94,7 @@ psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'sel
 echo "----->>>---->>>  用户已安装的插件版本: "
 for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
 do
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select * from pg_extension'
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),* from pg_extension'
 done
 
 echo "----->>>---->>>  用户使用了多少种数据类型: "
@@ -111,10 +112,11 @@ done
 echo "----->>>---->>>  用户对象占用空间的柱状图: "
 for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
 do
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select buk,pg_size_pretty(min),pg_size_pretty(max),cnt from( select row_number() over (partition by buk order by tsize),tsize,buk,min(tsize) over (partition by buk),max(tsize) over (partition by buk),count(*) over (partition by buk) cnt from ( select pg_relation_size(a.oid) tsize, width_bucket(pg_relation_size(a.oid),tmin,tmax,10) buk from (select min(pg_relation_size(a.oid)) tmin,max(pg_relation_size(a.oid)) tmax from pg_class a,pg_namespace c where a.relnamespace=c.oid and nspname !~ $$^pg_$$ and nspname<>$$information_schema$$) t, pg_class a,pg_namespace c where a.relnamespace=c.oid and nspname !~ $$^pg_$$ and nspname<>$$information_schema$$ ) t)t where row_number=1;'
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),buk this_buk_no,cnt rels_in_this_buk,pg_size_pretty(min) buk_min,pg_size_pretty(max) buk_max from( select row_number() over (partition by buk order by tsize),tsize,buk,min(tsize) over (partition by buk),max(tsize) over (partition by buk),count(*) over (partition by buk) cnt from ( select pg_relation_size(a.oid) tsize, width_bucket(pg_relation_size(a.oid),tmin,tmax,10) buk from (select min(pg_relation_size(a.oid)) tmin,max(pg_relation_size(a.oid)) tmax from pg_class a,pg_namespace c where a.relnamespace=c.oid and nspname !~ $$^pg_$$ and nspname<>$$information_schema$$) t, pg_class a,pg_namespace c where a.relnamespace=c.oid and nspname !~ $$^pg_$$ and nspname<>$$information_schema$$ ) t)t where row_number=1;'
 done
 
 echo "----->>>---->>>  当前用户的操作系统定时任务: "
+echo "I am `whoami`"
 crontab -l
 echo "建议: "
 echo "    仔细检查定时任务的必要性, 以及定时任务的成功与否的评判标准, 以及监控措施. "
@@ -284,7 +286,7 @@ echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
 echo ""
 
 echo "----->>>---->>>  获取错误日志信息: "
-awk -F "," '{print $12" "$13}' *.csv |grep -E "WARNING|ERROR|FATAL|PANIC"|sort|uniq -c|sort -rn
+cat *.csv | grep -E "^[0-9]" | grep -E "WARNING|ERROR|FATAL|PANIC" | awk -F "," '{print $12" , "$13" , "$14}'|sort|uniq -c|sort -rn
 echo "建议: "
 echo "    参考 http://www.postgresql.org/docs/current/static/errcodes-appendix.html ."
 echo -e "\n"
@@ -312,8 +314,10 @@ cat *.csv|awk -F "," '{print $1" "$2" "$3" "$8" "$14}' |grep "duration:"|grep -v
 echo "建议: "
 echo "    输出格式(条数,日期,用户,数据库,QUERY,耗时ms). "
 echo "    慢查询反映执行时间超过log_min_duration_statement的SQL, 可以根据实际情况分析数据库或SQL语句是否有优化空间. "
+echo ""
 echo "----->>>---->>>  慢查询分布头10条的执行时间, ms: "
 cat *.csv|awk -F "," '{print $1" "$2" "$3" "$8" "$14}' |grep "duration:"|grep -v "plan:"|awk '{print $1" "$4" "$5" "$6" "$7" "$8}'|sort -k 6 -n|head -n 10
+echo ""
 echo "----->>>---->>>  慢查询分布尾10条的执行时间, ms: "
 cat *.csv|awk -F "," '{print $1" "$2" "$3" "$8" "$14}' |grep "duration:"|grep -v "plan:"|awk '{print $1" "$4" "$5" "$6" "$7" "$8}'|sort -k 6 -n|tail -n 10
 echo -e "\n"
@@ -378,7 +382,7 @@ echo "    如果active状态很多, 说明数据库比较繁忙. 如果idle in t
 echo -e "\n"
 
 echo "----->>>---->>>  总剩余连接数: "
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select max_conn,used,res_super,max_conn-used-res_super res_normal from (select count(*) used from pg_stat_activity) t1,(select setting::int res_super from pg_settings where name=$$superuser_reserved_connections$$) t2,(select setting::int max_conn from pg_settings where name=$$max_connections$$) t3'
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select max_conn,used,res_for_super,max_conn-used-res_for_super res_for_normal from (select count(*) used from pg_stat_activity) t1,(select setting::int res_for_super from pg_settings where name=$$superuser_reserved_connections$$) t2,(select setting::int max_conn from pg_settings where name=$$max_connections$$) t3'
 echo "建议: "
 echo "    给超级用户和普通用户设置足够的连接, 以免不能登录数据库. "
 echo -e "\n"
@@ -419,7 +423,7 @@ echo -e "\n"
 echo "----->>>---->>>  上次巡检以来未使用或使用较少的索引: "
 for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
 do
-psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select t2.schemaname,t2.relname,t2.indexrelname,t2.idx_scan,t2.idx_tup_read,t2.idx_tup_fetch,pg_size_pretty(pg_relation_size(indexrelid)) from pg_stat_all_tables t1,pg_stat_all_indexes t2 where t1.relid=t2.relid and t2.idx_scan<10 and t2.schemaname not in ($$pg_toast$$,$$pg_catalog$$) and indexrelid not in (select conindid from pg_constraint where contype in ($$p$$,$$u$$,$$f$$)) and pg_relation_size(indexrelid)>65536 order by pg_relation_size(indexrelid) desc'
+psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -q -c 'select current_database(),t2.schemaname,t2.relname,t2.indexrelname,t2.idx_scan,t2.idx_tup_read,t2.idx_tup_fetch,pg_size_pretty(pg_relation_size(indexrelid)) from pg_stat_all_tables t1,pg_stat_all_indexes t2 where t1.relid=t2.relid and t2.idx_scan<10 and t2.schemaname not in ($$pg_toast$$,$$pg_catalog$$) and indexrelid not in (select conindid from pg_constraint where contype in ($$p$$,$$u$$,$$f$$)) and pg_relation_size(indexrelid)>65536 order by pg_relation_size(indexrelid) desc'
 done
 echo "建议: "
 echo "    建议和应用开发人员确认后, 删除不需要的索引. "
@@ -692,17 +696,20 @@ echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
 echo ""
 
 echo "----->>>---->>>  密码泄露检查: "
-echo "    检查 ~/.psql_history  "
+echo "    检查 ~/.psql_history :  "
 grep -i "password" ~/.psql_history|grep -i -E "role|group|user"
-echo "    检查 *.csv  "
-grep -i -r -E "role|group|user" *.csv|grep -i "password"|grep -i -E "create|alter"
-echo "    检查 $PGDATA/recovery.*  "
+echo ""
+echo "    检查 *.csv :  "
+cat *.csv | grep -E "^[0-9]" | grep -i -r -E "role|group|user" |grep -i "password"|grep -i -E "create|alter"
+echo ""
+echo "    检查 $PGDATA/recovery.* :  "
 grep -i "password" ../recovery.*
-echo "    检查 pg_stat_statements  "
+echo ""
+echo "    检查 pg_stat_statements :  "
 psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -c 'select query from pg_stat_statements where (query ~* $$group$$ or query ~* $$user$$ or query ~* $$role$$) and query ~* $$password$$'
-echo "    检查 pg_authid  "
+echo "    检查 pg_authid :  "
 psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select * from pg_authid where rolpassword !~ $$^md5$$ or length(rolpassword)<>35'
-echo "    检查 pg_user_mappings, pg_views  "
+echo "    检查 pg_user_mappings, pg_views :  "
 for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
 do
 psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off -c 'select current_database(),* from pg_user_mappings where umoptions::text ~* $$password$$'
@@ -722,9 +729,9 @@ echo "    到期后, 用户将无法登陆, 记得修改密码, 同时将密码�
 echo -e "\n"
 
 echo "----->>>---->>>  SQL注入风险分析: "
-grep exec_simple_query *.csv|awk -F "," '{print $2,$3,$5,$24}'|sed 's/\:[0-9]*//g'|sort|uniq -c|sort -n -r
+cat *.csv | grep -E "^[0-9]" | grep exec_simple_query |awk -F "," '{print $2" "$3" "$5" "$NF}'|sed 's/\:[0-9]*//g'|sort|uniq -c|sort -n -r
 echo "建议: "
-echo "    建议程序使用绑定变量规避SQL注入风险, 或者程序端使用SQL注入过滤插件. "
+echo "    调用exec_simple_query有风险, 允许多个SQL封装在一个接口中调用, 建议程序使用绑定变量规避SQL注入风险, 或者程序端使用SQL注入过滤插件. "
 echo -e "\n"
 
 echo "----->>>---->>>  普通用户对象上的规则安全检查: "
@@ -759,7 +766,7 @@ echo "    在数据库CRASH后无法修复unlogged table和hash index, 不建议
 echo "    PITR对unlogged table和hash index也不起作用. "
 echo -e "\n"
 
-echo "----->>>---->>>  序列剩余可使用次数不足1000万次: "
+echo "----->>>---->>>  剩余可使用次数不足1000万次的序列检查: "
 for db in `psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -t -A -q -c 'select datname from pg_database where datname not in ($$template0$$, $$template1$$)'`
 do
 psql -h $PGHOST -p $PGPORT -U $PGUSER -d $db --pset=pager=off <<EOF
@@ -909,10 +916,19 @@ echo -e "\n"
 
 
 adds() {
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo "|                        附加信息                         |"
+echo "|+++++++++++++++++++++++++++++++++++++++++++++++++++++++++|"
+echo ""
+
+echo "----->>>---->>>  附件1 : `date -d '-1 day' +"%Y-%m-%d"` 操作系统sysstat收集的统计信息 "
+sar -A -f /var/log/sa/sa`date -d '-1 day' +%d`
+echo -e "\n"
+
 echo "----->>>---->>>  其他建议: "
 echo "    其他建议的巡检项: "
-echo "    HA 状态是否正常 "
-echo "    sar io, load, ...... "
+echo "        HA 状态是否正常, 例如检查HA程序, 检查心跳表的延迟. "
+echo "        sar io, load, ...... "
 echo "    巡检结束后, 清理csv日志 "
 }  # adds function end
 
