@@ -87,22 +87,22 @@ echo ""
 echo "----->>>---->>>  sysctl -a 信息: "
 sysctl -a
 echo ""
-echo "----->>>---->>>  硬盘SMART信息: "
+echo "----->>>---->>>  硬盘SMART信息(需要root): "
 for i in `smartctl --scan|awk '{print $1}'`; do echo -e "\n\nDEVICE $i"; smartctl -x $i; done
 echo ""
 echo "----->>>---->>>  /var/log/boot.log "
 cat /var/log/boot.log
 echo ""
-echo "----->>>---->>>  /var/log/cron "
+echo "----->>>---->>>  /var/log/cron(需要root) "
 cat /var/log/cron
 echo ""
 echo "----->>>---->>>  /var/log/dmesg "
 cat /var/log/dmesg
 echo ""
-echo "----->>>---->>>  /var/log/messages "
+echo "----->>>---->>>  /var/log/messages(需要root) "
 tail -n 500 /var/log/messages
 echo ""
-echo "----->>>---->>>  /var/log/secure "
+echo "----->>>---->>>  /var/log/secure(需要root) "
 cat /var/log/secure
 echo ""
 echo "----->>>---->>>  /var/log/wtmp "
@@ -979,4 +979,4 @@ return 0
 
 #  备注
 #  csv日志分析需要优化
-
+#  某些操作需要root
