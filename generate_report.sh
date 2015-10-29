@@ -84,8 +84,29 @@ echo ""
 echo "----->>>---->>>  /etc/sysconfig/iptables "
 cat /etc/sysconfig/iptables
 echo ""
-echo "----->>>---->>>  sysctl -a 信息 "
+echo "----->>>---->>>  sysctl -a 信息: "
 sysctl -a
+echo ""
+echo "----->>>---->>>  硬盘SMART信息: "
+for i in `smartctl --scan|awk '{print $1}'`; do echo -e "\n\nDEVICE $i"; smartctl -x $i; done
+echo ""
+echo "----->>>---->>>  /var/log/boot.log "
+cat /var/log/boot.log
+echo ""
+echo "----->>>---->>>  /var/log/cron "
+cat /var/log/cron
+echo ""
+echo "----->>>---->>>  /var/log/dmesg "
+cat /var/log/dmesg
+echo ""
+echo "----->>>---->>>  /var/log/messages "
+tail -n 500 /var/log/messages
+echo ""
+echo "----->>>---->>>  /var/log/secure "
+cat /var/log/secure
+echo ""
+echo "----->>>---->>>  /var/log/wtmp "
+who -a /var/log/wtmp
 echo -e "\n"
 
 
