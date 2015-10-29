@@ -68,6 +68,9 @@ echo ""
 echo "----->>>---->>>  拓扑: "
 lstopo-no-graphics
 echo ""
+echo "----->>>---->>>  进程树: "
+pstree -a -A -c -l -n -p -u -U -Z
+echo ""
 echo "----->>>---->>>  操作系统配置: "
 echo "----->>>---->>>  /etc/sysctl.conf "
 grep "^[a-z]" /etc/sysctl.conf
@@ -80,6 +83,9 @@ grep -v "^#" /etc/security/limits.d/*.conf|grep -v "^$"
 echo ""
 echo "----->>>---->>>  /etc/sysconfig/iptables "
 cat /etc/sysconfig/iptables
+echo ""
+echo "----->>>---->>>  sysctl -a 信息 "
+sysctl -a
 echo -e "\n"
 
 
@@ -153,41 +159,44 @@ grep '^\ *[a-z]' $PGDATA/postgresql.conf|awk -F "#" '{print $1}'
 echo "建议: "
 echo "    主备配置尽量保持一致, 配置合理的参数值."
 echo -e "    建议修改的参数列表如下  ( 假设操作系统内存为128GB, 数据库独占操作系统, 数据库版本9.4.x )  : 
-listen_addresses = '0.0.0.0'  # 监听所有IPV4地址
-port = 1921  # 监听非默认端口
-max_connections = 4000  # 最大允许连接数
-superuser_reserved_connections = 20  # 为超级用户保留的连接
-unix_socket_directories = '.'  # unix socket文件目录最好放在$PGDATA中, 确保安全
-unix_socket_permissions = 0700  # 确保权限安全
-tcp_keepalives_idle = 30  # 间歇性发送TCP心跳包, 防止连接被网络设备中断.
+echo ""
+listen_addresses = '0.0.0.0'            # 监听所有IPV4地址
+port = 1921                             # 监听非默认端口
+max_connections = 4000                  # 最大允许连接数
+superuser_reserved_connections = 20     # 为超级用户保留的连接
+unix_socket_directories = '.'           # unix socket文件目录最好放在$PGDATA中, 确保安全
+unix_socket_permissions = 0700          # 确保权限安全
+tcp_keepalives_idle = 30                # 间歇性发送TCP心跳包, 防止连接被网络设备中断.
 tcp_keepalives_interval = 10
 tcp_keepalives_count = 10
-shared_buffers = 16GB  # 数据库自己管理的共享内存大小
-huge_pages = try  # 尽量使用大页, 需要操作系统支持, 配置vm.nr_hugepages*2MB大于shared_buffers.
-maintenance_work_mem = 512MB  # 可以加速创建索引, 回收垃圾(假设没有设置autovacuum_work_mem)
-autovacuum_work_mem = 512MB  # 可以加速回收垃圾
-shared_preload_libraries = 'auth_delay,passwordcheck,pg_stat_statements,auto_explain'  # 建议防止暴力破解, 密码复杂度检测, 开启pg_stat_statements, 开启auto_explain, 参考 http://blog.163.com/digoal@126/blog/static/16387704020149852941586  
-bgwriter_delay = 10ms  # bgwriter process间隔多久调用write接口(注意不是fsync)将shared buffer中的dirty page写到文件系统.
-bgwriter_lru_maxpages = 1000  # 一个周期最多写多少脏页
-max_worker_processes = 20  # 如果要使用worker process, 最多可以允许fork 多少个worker进程.
-wal_level = logical  # 如果将来打算使用logical复制, 最后先配置好, 不需要停机再改.
-synchronous_commit = off  # 如果磁盘的IOPS能力一般, 建议使用异步提交来提高性能, 但是数据库crash或操作系统crash时, 最多可能丢失2*wal_writer_delay时间段产生的事务日志(在wal buffer中). 
-wal_sync_method = open_datasync  # 使用pg_test_fsync测试wal所在磁盘的fsync接口, 使用性能好的.
+shared_buffers = 16GB                   # 数据库自己管理的共享内存大小
+huge_pages = try                        # 尽量使用大页, 需要操作系统支持, 配置vm.nr_hugepages*2MB大于shared_buffers.
+maintenance_work_mem = 512MB            # 可以加速创建索引, 回收垃圾(假设没有设置autovacuum_work_mem)
+autovacuum_work_mem = 512MB             # 可以加速回收垃圾
+shared_preload_libraries = 'auth_delay,passwordcheck,pg_stat_statements,auto_explain'           # 建议防止暴力破解, 密码复杂度检测, 开启pg_stat_statements, 开启auto_explain, 参考 http://blog.163.com/digoal@126/blog/static/16387704020149852941586  
+bgwriter_delay = 10ms                   # bgwriter process间隔多久调用write接口(注意不是fsync)将shared buffer中的dirty page写到文件系统.
+bgwriter_lru_maxpages = 1000            # 一个周期最多写多少脏页
+max_worker_processes = 20               # 如果要使用worker process, 最多可以允许fork 多少个worker进程.
+wal_level = logical                     # 如果将来打算使用logical复制, 最后先配置好, 不需要停机再改.
+synchronous_commit = off                # 如果磁盘的IOPS能力一般, 建议使用异步提交来提高性能, 但是数据库crash或操作系统crash时, 最多可能丢失2*wal_writer_delay时间段产生的事务日志(在wal buffer中). 
+wal_sync_method = open_datasync         # 使用pg_test_fsync测试wal所在磁盘的fsync接口, 使用性能好的.
 wal_buffers = 16MB
 wal_writer_delay = 10ms
-checkpoint_segments = 1024  # 等于shared_buffers除以单个wal segment的大小.
-archive_mode = on  # 最好先开启, 否则需要重启数据库来修改
-archive_command = '/bin/date'  # 最好先开启, 否则需要重启数据库来修改, 将来修改为正确的命令例如, test ! -f /home/postgres/archivedir/pg_root/%f && cp %p /home/postgres/archivedir/pg_root/%f
-max_wal_senders = 32  # 最多允许多少个wal sender进程.
-wal_keep_segments = 2048  # 在pg_xlog目录中保留的WAL文件数, 根据流复制业务的延迟情况和pg_xlog目录大小来预估.
-max_replication_slots = 32  # 最多允许多少个复制插槽
+checkpoint_segments = 1024              # 等于shared_buffers除以单个wal segment的大小.
+checkpoint_timeout = 30min
+checkpoint_completion_target = 0.2
+archive_mode = on                       # 最好先开启, 否则需要重启数据库来修改
+archive_command = '/bin/date'           # 最好先开启, 否则需要重启数据库来修改, 将来修改为正确的命令例如, test ! -f /home/postgres/archivedir/pg_root/%f && cp %p /home/postgres/archivedir/pg_root/%f
+max_wal_senders = 32                    # 最多允许多少个wal sender进程.
+wal_keep_segments = 2048                # 在pg_xlog目录中保留的WAL文件数, 根据流复制业务的延迟情况和pg_xlog目录大小来预估.
+max_replication_slots = 32              # 最多允许多少个复制插槽
 hot_standby = on
-max_standby_archive_delay = 300s  # 如果备库要被用于只读, 有大的查询的情况下, 如果遇到conflicts, 可以考虑调整这个值来避免conflict造成cancel query.
-max_standby_streaming_delay = 300s  # 如果备库要被用于只读, 有大的查询的情况下, 如果遇到conflicts, 可以考虑调整这个值来避免conflict造成cancel query.
+max_standby_archive_delay = 300s        # 如果备库要被用于只读, 有大的查询的情况下, 如果遇到conflicts, 可以考虑调整这个值来避免conflict造成cancel query.
+max_standby_streaming_delay = 300s      # 如果备库要被用于只读, 有大的查询的情况下, 如果遇到conflicts, 可以考虑调整这个值来避免conflict造成cancel query.
 wal_receiver_status_interval = 1s
 hot_standby_feedback = on
-random_page_cost = 2  # 根据IO能力调整
-effective_cache_size = 100GB  # 调整为与内存一样大, 或者略小(减去shared_buffer). 用来评估OS PAGE CACHE可以用到的内存大小.
+random_page_cost = 2                    # 根据IO能力调整
+effective_cache_size = 100GB            # 调整为与内存一样大, 或者略小(减去shared_buffer). 用来评估OS PAGE CACHE可以用到的内存大小.
 log_destination = 'csvlog'
 logging_collector = on
 log_truncate_on_rotation = on
@@ -196,21 +205,22 @@ log_min_duration_statement = 1s
 log_checkpoints = on
 log_connections = on
 log_disconnections = on
-log_error_verbosity = verbose  # 在日志中输出代码位置
+log_error_verbosity = verbose           # 在日志中输出代码位置
 log_lock_waits = on
 log_statement = 'ddl'
 autovacuum = on
 log_autovacuum_min_duration = 0
 autovacuum_max_workers = 10
-autovacuum_naptime = 1s  # 快速唤醒, 防止膨胀
-autovacuum_vacuum_scale_factor = 0.0002  # 当垃圾超过比例时, 启动垃圾回收工作进程
-autovacuum_analyze_scale_factor = 0.01
-auth_delay.milliseconds = 5000  # 认证失败, 延迟多少毫秒反馈
-auto_explain.log_min_duration = 5000  # 记录超过多少毫秒的SQL当时的执行计划
+autovacuum_naptime = 30s                # 快速唤醒, 防止膨胀
+autovacuum_vacuum_scale_factor = 0.02   # 当垃圾超过比例时, 启动垃圾回收工作进程
+autovacuum_analyze_scale_factor = 0.1
+auth_delay.milliseconds = 5000          # 认证失败, 延迟多少毫秒反馈
+auto_explain.log_min_duration = 5000    # 记录超过多少毫秒的SQL当时的执行计划
 auto_explain.log_analyze = true
 auto_explain.log_verbose = true
 auto_explain.log_buffers = true
 auto_explain.log_nested_statements = true
+pg_stat_statements.track_utility=off
 
     建议的操作系统配置(根据实际情况修改) : 
 vi /etc/sysctl.conf
@@ -249,15 +259,17 @@ net.ipv4.tcp_keepalive_time = 72
 net.ipv4.tcp_keepalive_probes = 9 
 net.ipv4.tcp_keepalive_intvl = 7
 vm.zone_reclaim_mode=1
-vm.dirty_background_bytes=102400000
-vm.dirty_bytes=102400000
-vm.dirty_expire_centisecs=500
-vm.dirty_writeback_centisecs=3000
+vm.dirty_background_ratio = 10
+vm.dirty_background_bytes = 1024000000
+vm.dirty_ratio = 60
+vm.dirty_bytes = 0
+vm.dirty_writeback_centisecs = 500
+vm.dirty_expire_centisecs = 3000
 vm.swappiness=0
 net.ipv4.tcp_syncookies = 0
 net.ipv4.tcp_tw_reuse = 0
 net.ipv4.tcp_tw_recycle = 1
-net.ipv4.tcp_fin_timeout = 30 
+net.ipv4.tcp_fin_timeout = 30
 vm.nr_hugepages=102400
 
 vi /etc/security/limits.conf
