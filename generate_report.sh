@@ -755,6 +755,14 @@ echo "    在fdw, dblink based view中不建议使用密码明文. "
 echo "    在recovery.*的配置中不要使用密码, 不安全, 可以使用.pgpass配置密码 . "
 echo -e "\n"
 
+echo "----->>>---->>>  简单密码检查: "
+echo "    1. 检查已有密码是否简单, 从crackdb库提取密码字典, 挨个检查 :  "
+echo "    检查 md5('$pwd'||'$username')是否与pg_authid.rolpassword匹配 :  "
+echo "    匹配则说明用户使用了简单密码 :  "
+echo ""
+echo "    2. 事前检查参考 http://blog.163.com/digoal@126/blog/static/16387704020149852941586"
+echo -e "\n"
+
 echo "----->>>---->>>  用户密码到期时间: "
 psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE --pset=pager=off -q -c 'select rolname,rolvaliduntil from pg_authid order by rolvaliduntil'
 echo "建议: "
