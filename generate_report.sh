@@ -859,30 +859,25 @@ echo -e "\n"
 
 echo "----->>>---->>>  锁等待: "
 psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE -x --pset=pager=off <<EOF
-create or replace function f_lock_level(i_mode text) returns int as \$\$
-declare
-begin
-  case i_mode
-    when 'INVALID' then return 0;
-    when 'AccessShareLock' then return 1;
-    when 'RowShareLock' then return 2;
-    when 'RowExclusiveLock' then return 3;
-    when 'ShareUpdateExclusiveLock' then return 4;
-    when 'ShareLock' then return 5;
-    when 'ShareRowExclusiveLock' then return 6;
-    when 'ExclusiveLock' then return 7;
-    when 'AccessExclusiveLock' then return 8;
-    else return 0;
-  end case;
-end; 
-\$\$ language plpgsql strict;
-
 with t_wait as                     
-(select a.mode,a.locktype,a.database,a.relation,a.page,a.tuple,a.classid,a.objid,a.objsubid,a.pid,a.virtualtransaction,a.virtualxid,a,transactionid,b.query,b.xact_start,b.query_start,b.usename,b.datname from pg_locks a,pg_stat_activity b where a.pid=b.pid and not a.granted),
+(select a.mode,a.locktype,a.database,a.relation,a.page,a.tuple,a.classid,
+a.objid,a.objsubid,a.pid,a.virtualtransaction,a.virtualxid,a,
+transactionid,b.query,b.xact_start,b.query_start,b.usename,b.datname 
+  from pg_locks a,pg_stat_activity b where a.pid=b.pid and not a.granted),
 t_run as 
-(select a.mode,a.locktype,a.database,a.relation,a.page,a.tuple,a.classid,a.objid,a.objsubid,a.pid,a.virtualtransaction,a.virtualxid,a,transactionid,b.query,b.xact_start,b.query_start,b.usename,b.datname from pg_locks a,pg_stat_activity b where a.pid=b.pid and a.granted) 
-select r.locktype,r.mode r_mode,r.usename r_user,r.datname r_db,r.relation::regclass,r.pid r_pid,r.xact_start r_xact_start,r.query_start r_query_start,now()-r.query_start r_locktime,r.query r_query,
-w.mode w_mode,w.pid w_pid,w.xact_start w_xact_start,w.query_start w_query_start,now()-w.query_start w_locktime,w.query w_query  
+(select a.mode,a.locktype,a.database,a.relation,a.page,a.tuple,
+a.classid,a.objid,a.objsubid,a.pid,a.virtualtransaction,a.virtualxid,
+a,transactionid,b.query,b.xact_start,b.query_start,
+b.usename,b.datname from pg_locks a,pg_stat_activity b where 
+a.pid=b.pid and a.granted) 
+select r.locktype,r.mode r_mode,r.usename r_user,r.datname r_db,
+r.relation::regclass,r.pid r_pid,
+r.page r_page,r.tuple r_tuple,r.xact_start r_xact_start,
+r.query_start r_query_start,
+now()-r.query_start r_locktime,r.query r_query,w.mode w_mode,
+w.pid w_pid,w.page w_page,
+w.tuple w_tuple,w.xact_start w_xact_start,w.query_start w_query_start,
+now()-w.query_start w_locktime,w.query w_query  
 from t_wait w,t_run r where
   r.locktype is not distinct from w.locktype and
   r.database is not distinct from w.database and
@@ -894,7 +889,31 @@ from t_wait w,t_run r where
   r.objsubid is not distinct from w.objsubid and
   r.transactionid is not distinct from w.transactionid and
   r.pid <> w.pid
-  order by f_lock_level(w.mode)+f_lock_level(r.mode) desc,r.xact_start;
+  order by 
+  ((  case w.mode
+    when 'INVALID' then 0
+    when 'AccessShareLock' then 1
+    when 'RowShareLock' then 2
+    when 'RowExclusiveLock' then 3
+    when 'ShareUpdateExclusiveLock' then 4
+    when 'ShareLock' then 5
+    when 'ShareRowExclusiveLock' then 6
+    when 'ExclusiveLock' then 7
+    when 'AccessExclusiveLock' then 8
+    else 0
+  end  ) + 
+  (  case r.mode
+    when 'INVALID' then 0
+    when 'AccessShareLock' then 1
+    when 'RowShareLock' then 2
+    when 'RowExclusiveLock' then 3
+    when 'ShareUpdateExclusiveLock' then 4
+    when 'ShareLock' then 5
+    when 'ShareRowExclusiveLock' then 6
+    when 'ExclusiveLock' then 7
+    when 'AccessExclusiveLock' then 8
+    else 0
+  end  )) desc,r.xact_start;
 EOF
 echo "建议: "
 echo "    锁等待状态, 反映业务逻辑的问题或者SQL性能有问题, 建议深入排查持锁的SQL. "
