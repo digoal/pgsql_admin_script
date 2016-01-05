@@ -561,6 +561,10 @@ echo "    同时还需要打开autovacuum, 根据服务器的内存大小, CPU�
 echo "    同时还需要分析是否对大数据库使用了逻辑备份pg_dump, 系统中是否经常有长SQL, 长事务. 这些都有可能导致膨胀. "
 echo "    使用pg_reorg或者vacuum full可以回收膨胀的空间. "
 echo "    参考: http://blog.163.com/digoal@126/blog/static/1638770402015329115636287/ "
+echo "    otta评估出的表实际需要页数, iotta评估出的索引实际需要页数; "
+echo "    bs数据库的块大小; "
+echo "    tbloat表膨胀倍数, ibloat索引膨胀倍数, wastedpages表浪费了多少个数据块, wastedipages索引浪费了多少个数据块; "
+echo "    wastedbytes表浪费了多少字节, wastedibytes索引浪费了多少字节; "
 echo -e "\n"
 
 
