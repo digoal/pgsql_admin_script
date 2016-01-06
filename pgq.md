@@ -75,6 +75,22 @@ create table mq.table_change_rec5 (like mq.table_change_rec including all) inher
 create table mq.table_change_rec6 (like mq.table_change_rec including all) inherits(mq.table_change_rec);
 ```
 
+创建取事务结束时间的函数，结合事务本地变量来实现。
+```
+create or replace function mq.get_commit_time() returns timestamp without time zone as $$
+declare
+  res timestamp without time zone;
+begin
+  show commit_time.realval into res;
+  return res;
+exception when others then  -- 如果未设置, 则使用以下SQL设置.
+  res := clock_timestamp();
+  execute 'set local commit_time.realval = '''||res||'''';  -- 设置事务级变量
+  return res;
+end;
+$$ language plpgsql;
+```
+
 创建触发器函数，记录队列  
 ```
 CREATE OR REPLACE FUNCTION mq.dml_trace()
@@ -88,18 +104,10 @@ v_username name := session_user;
 v_dbname name := current_database();
 v_client_addr inet := inet_client_addr();
 v_client_port int := inet_client_port();
-v_crt_time timestamp without time zone := clock_timestamp();
+v_crt_time timestamp without time zone := mq.get_commit_time();
 v_xid int8 := txid_current();
-v_crt_time_min timestamp without time zone := null;
-v_dofweek int;
+v_dofweek int := EXTRACT(DOW FROM v_crt_time);
 BEGIN
-
-select crt_time into v_crt_time_min from mq.table_change_rec where x_id=v_xid limit 1;
-if found then
-  v_dofweek := EXTRACT(DOW FROM v_crt_time_min);
-else
-  v_dofweek := EXTRACT(DOW FROM v_crt_time);
-end if;
 
 case TG_OP
 when 'DELETE' then 
@@ -107,25 +115,25 @@ when 'DELETE' then
   case v_dofweek
   when 0 then
     insert into mq.table_change_rec0 (relid, table_schema, table_name, when_tg, level, op, old_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 1 then
     insert into mq.table_change_rec1 (relid, table_schema, table_name, when_tg, level, op, old_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 2 then
     insert into mq.table_change_rec2 (relid, table_schema, table_name, when_tg, level, op, old_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 3 then
     insert into mq.table_change_rec3 (relid, table_schema, table_name, when_tg, level, op, old_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 4 then
     insert into mq.table_change_rec4 (relid, table_schema, table_name, when_tg, level, op, old_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 5 then
     insert into mq.table_change_rec5 (relid, table_schema, table_name, when_tg, level, op, old_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 6 then
     insert into mq.table_change_rec6 (relid, table_schema, table_name, when_tg, level, op, old_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   end case;
 
 when 'INSERT' then 
@@ -133,25 +141,25 @@ when 'INSERT' then
   case v_dofweek
   when 0 then
     insert into mq.table_change_rec0 (relid, table_schema, table_name, when_tg, level, op, new_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_new_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_new_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 1 then
     insert into mq.table_change_rec1 (relid, table_schema, table_name, when_tg, level, op, new_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_new_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_new_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 2 then
     insert into mq.table_change_rec2 (relid, table_schema, table_name, when_tg, level, op, new_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_new_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_new_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 3 then
     insert into mq.table_change_rec3 (relid, table_schema, table_name, when_tg, level, op, new_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_new_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_new_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 4 then
     insert into mq.table_change_rec4 (relid, table_schema, table_name, when_tg, level, op, new_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_new_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_new_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 5 then
     insert into mq.table_change_rec5 (relid, table_schema, table_name, when_tg, level, op, new_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_new_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_new_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 6 then
     insert into mq.table_change_rec6 (relid, table_schema, table_name, when_tg, level, op, new_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_new_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_new_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   end case;
 
 when 'UPDATE' then 
@@ -160,25 +168,25 @@ when 'UPDATE' then
   case v_dofweek
   when 0 then
     insert into mq.table_change_rec0 (relid, table_schema, table_name, when_tg, level, op, old_rec, new_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_new_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_new_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 1 then
     insert into mq.table_change_rec1 (relid, table_schema, table_name, when_tg, level, op, old_rec, new_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_new_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_new_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 2 then
     insert into mq.table_change_rec2 (relid, table_schema, table_name, when_tg, level, op, old_rec, new_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_new_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_new_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 3 then
     insert into mq.table_change_rec3 (relid, table_schema, table_name, when_tg, level, op, old_rec, new_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_new_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_new_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 4 then
     insert into mq.table_change_rec4 (relid, table_schema, table_name, when_tg, level, op, old_rec, new_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_new_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_new_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 5 then
     insert into mq.table_change_rec5 (relid, table_schema, table_name, when_tg, level, op, old_rec, new_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_new_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_new_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   when 6 then
     insert into mq.table_change_rec6 (relid, table_schema, table_name, when_tg, level, op, old_rec, new_rec, crt_time, dbname, username, client_addr, client_port)
-      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_new_rec, coalesce(v_crt_time_min,v_crt_time), v_dbname, v_username, v_client_addr, v_client_port);
+      values (tg_relid, tg_table_schema, tg_table_name, tg_when, tg_level, tg_op, v_old_rec, v_new_rec, v_crt_time, v_dbname, v_username, v_client_addr, v_client_port);
   end case;
 
 else
@@ -194,7 +202,7 @@ $BODY$ strict;
 一个事务有多行触发时，都记录同一个时间，即事务的结束时间。   
 回放时，也使用事务结束时间顺序回放。   
 ```
-CREATE TRIGGER tg AFTER INSERT OR DELETE OR UPDATE ON test DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE mq.dml_trace()
+CREATE CONSTRAINT TRIGGER tg AFTER INSERT OR DELETE OR UPDATE ON test DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE mq.dml_trace();
 ```
 DDL跟踪使用事件触发器，本文未涉及，下一个版本完善。  
 
@@ -354,7 +362,7 @@ begin
 case v_tablename
 
 when 'table_change_rec0' then
-  -- 取提交时间分别是最大,最小XID，
+  -- 取提交时间分别是最大, 最小对应的XID
   select x_id into v_xid_mincmt from mq.table_change_rec0 where consumed=false order by crt_time limit 1 offset 0;
   select x_id into v_xid_maxcmt from mq.table_change_rec0 where consumed=false order by crt_time limit 1 offset n-1;
   -- 如果xid相等，则以xid不限制limit获取 
@@ -1062,7 +1070,7 @@ CREATE DATABASE
 ```
 src=# create table test(id int primary key,info text,crt_time timestamp);
 CREATE TABLE
-src=# CREATE TRIGGER tg AFTER DELETE or INSERT or UPDATE ON test FOR EACH ROW EXECUTE PROCEDURE mq.dml_trace();
+src=# CREATE CONSTRAINT TRIGGER tg AFTER INSERT OR DELETE OR UPDATE ON test DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE mq.dml_trace();
 CREATE TRIGGER
 ```
 目标端创建测试表  
@@ -1082,7 +1090,7 @@ pgbench -M prepared -n -r -P 1 -f ./test.sql -c 48 -j 48 -T 120 src
 ```
 同时另外开一个会话数据同步到dest库，每次同步1万条循环  
 ```
-while true; do psql src -q -A -n -t -c 'begin work isolation level repeatable read; copy (select mq.build_sql(10000)) to stdout;commit;' | psql dest -f - ; done
+while true; do psql src -q -A -n -t -c 'begin work isolation level repeatable read; copy (select mq.build_sql(10000)) to stdout;commit;' | psql dest -f - >/dev/null ; done
 ```
 同步结束之后，查看两边的HASH值是否一致。  
 ```
