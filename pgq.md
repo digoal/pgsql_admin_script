@@ -1125,6 +1125,7 @@ BEGIN
 -- 将数据拷贝到文件
 # copy table to '';
 # 将mq记录表，不需要复制的记录标记为consumed=true，不需要的记录包括 
+  schema+tablename匹配被复制表 并且：
   事务 <= 最大已提交事务号  
   事务 in ( >最大已提交事务 and <最小未分配事务 and not in (为提交事务数组) )
 
