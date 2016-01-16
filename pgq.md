@@ -299,9 +299,9 @@ quote_ident(hstore_to_matrix(new_rec))[1][1]) = 'id'
 quote_ident(hstore_to_matrix(new_rec))[2][1]) = 'info'
 quote_ident(hstore_to_matrix(new_rec))[3][1]) = 'crt_time'
 值
-quote_ident(hstore_to_matrix(new_rec))[1][2]) = '1'
-quote_ident(hstore_to_matrix(new_rec))[2][2]) = 'test'
-quote_ident(hstore_to_matrix(new_rec))[3][2]) = '2016-01-04 19:42:36'
+quote_nullable(hstore_to_matrix(new_rec))[1][2]) = '1'
+quote_nullable(hstore_to_matrix(new_rec))[2][2]) = 'test'
+quote_nullalbe(hstore_to_matrix(new_rec))[3][2]) = '2016-01-04 19:42:36'
 ......
 
 封装SQL
