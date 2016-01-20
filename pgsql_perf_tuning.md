@@ -359,7 +359,7 @@ dynamic_shared_memory_type = posix      # the default is the first option
 bgwriter_delay = 10ms       # 10-10000ms between rounds
 wal_level = minimal  # minimal, archive, hot_standby, or logical
 synchronous_commit = off    # synchronization level;
-full_page_writes = off      # recover from partial page writes
+full_page_writes = off      # recover from partial page writes, 有备份和归档就可以关闭它, crash后从备份恢复, 放partial write  
 wal_buffers = 16MB           # min 32kB, -1 sets based on shared_buffers
 wal_writer_delay = 10ms         # 1-10000 milliseconds
 max_wal_size = 32GB
@@ -822,7 +822,8 @@ sysctl -p
   #memlock    大于  nr_hugepages   大于  shared_buffers 
 ```
 
-3. 使用数据块分组提交, commit_delay = 10, commit_siblings = 16
+3. 使用数据块分组提交, commit_delay = 10, commit_siblings = 16 
+   平滑检查点到0.8个周期，减少fsync dirty page IO影响。
 ```
 http://blog.163.com/digoal@126/blog/static/1638770402016011115141697/
 shared_buffers = 164GB       # min 128kB
