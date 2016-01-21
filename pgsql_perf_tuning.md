@@ -98,11 +98,25 @@ group越多，可以并行进行的文件和块的allocation就越多。你可�
 也用于crash后的恢复。    
   
 2.3 realtime    
-被划分为很多个小的extents, 要将文件写入到realtime   section中，必须使用xfsctl改一下文件描述符的bit位，并且一定要在数据写入前完成。在realtime中的文件大小是realtime   extents的倍数关系。      
-  
+被划分为很多个小的extents, 要将文件写入到realtime   section中，必须使用xfsctl改一下文件描述符的bit位，并且一定要在数据写入前完成。在realtime中的文件大小是realtime    extents的倍数关系。        
+
+### mkfs.xfs优化  
+对于data section：  
 allocation group count数量和AGSIZE相乘等于块设备大小。  
 AG count数量多少和用户需求的并行度相关。  
-同时AG SIZE的取值范围是16M到1TB。  
+同时AG SIZE的取值范围是16M到1TB，PostgreSQL 建议1GB左右。  
+-b size=8192  与数据库块大小一致 （但不是所有的xfs版本都支持大于4K的block   size，所以如果你发现mount失败并且告知只支持4K以下的BLOCK，那么请重新格式化）  
+-d agcount=9000,sunit=16,swidth=48  
+   假设有9000个并发写操作，使用9000个allocation groups  
+   (单位512 bytes) 与lvm或RAID块设备的条带大小对齐  
+    与lvm或RAID块设备条带跨度大小对齐，以上对应3*8 例如 -i 3 -I 8。  
+
+log section：  
+最好放在SSD上，速度越快越好。最好不要使用cgroup限制LOG块设备的iops操作。  
+
+realtime section:  
+不需要的话，不需要创建。  
+
 agsize绝对不能是条带宽度的倍数。(假设条带数为3，条带大小为8K，则宽度为24K。)  
 如果根据指定agcount算出的agsize是swidth的倍数，会弹出警告：  
 例如下面的例子，  
@@ -134,26 +148,6 @@ realtime =none                   extsz=4096   blocks=0, rtextents=0
 ```
 输出如下  
 ```
-meta-data=/dev/mapper/vgdata01-lv02 isize=256    agcount=30001, agsize=156232 blks  (约600MB)
-         =                       sectsz=4096  attr=2, projid32bit=1
-         =                       crc=0        finobt=0
-data     =                       bsize=4096   blocks=4686971904, imaxpct=5
-         =                       sunit=2      swidth=6 blks
-naming   =version 2              bsize=4096   ascii-ci=0 ftype=0
-log      =/dev/mapper/vgdata01-lv01 bsize=4096   blocks=521728, version=2
-         =                       sectsz=512   sunit=2 blks, lazy-count=1
-realtime =none                   extsz=4096   blocks=0, rtextents=0
-```
-log最好放在SSD上，速度越快越好。最好不要使用cgroup限制LOG块设备的iops操作。  
-realtime不需要的话，不需要创建。  
--b size=8192  与数据库块大小一致 （但不是所有的xfs版本都支持大于4K的block   size，所以如果你发现mount失败并且告知只支持4K以下的BLOCK，那么请重新格式化）  
--d agcount=9000,sunit=16,swidth=48  
-   假设有9000个并发写操作，使用9000个allocation groups  
-   (单位512 bytes) 与lvm或RAID块设备的条带大小对齐  
-    与lvm或RAID块设备条带跨度大小对齐，以上对应3*8 例如 -i 3 -I 8。  
-例子  
-```
-#mkfs.xfs -f -b size=4096 -l logdev=/dev/mapper/vgdata01-lv01,size=2136997888,sunit=16 -d agsize=624928k,sunit=16,swidth=48 /dev/mapper/vgdata01-lv02
 meta-data=/dev/mapper/vgdata01-lv02 isize=256    agcount=30001, agsize=156232 blks  (约600MB)
          =                       sectsz=4096  attr=2, projid32bit=1
          =                       crc=0        finobt=0
@@ -1177,66 +1171,111 @@ http://www.postgresql.org/docs/9.2/interactive/libpq-connect.html
 4. PostgreSQL 代码层也有优化的空间，例如分区表的代码，快照的优化。  
   
 # 总结  
-阶段6结束时的内核参数  
+内核参数优化总结    
+以及每项配置的原理  
 ```  
-vm.swappiness = 0  
-kernel.shmmax=135497418752  
-net.core.rmem_max = 4194304  
-net.core.wmem_max = 4194304  
-net.core.rmem_default = 262144  
-net.core.wmem_default = 262144  
-net.ipv4.ip_local_port_range = 9000 65535  
-kernel.sem = 50100 64128000 50100 1280  
-vm.dirty_background_bytes = 102400000  
-vm.dirty_ratio = 80  
-vm.nr_hugepages = 102352  
+vm.swappiness = 0     #  关闭交换分区
+kernel.shmmax=135497418752     # 最大共享内存段大小
+net.core.rmem_max = 4194304   # The maximum receive socket buffer size in bytes
+net.core.wmem_max = 4194304    # The maximum send socket buffer size in bytes.
+net.core.rmem_default = 262144   # The default setting of the socket receive buffer in bytes.
+net.core.wmem_default = 262144   # The default setting (in bytes) of the socket send buffer.
+net.ipv4.ip_local_port_range = 9000 65535    # 本地自动分配的TCP UDP端口号范围
+kernel.sem = 50100 64128000 50100 1280     # 信号量
+vm.dirty_background_bytes = 102400000      # 系统脏页到达这个值，系统后台刷脏页调度进程 pdflush（或其他） 自动将(dirty_expire_centisecs/100）秒前的脏页刷到磁盘
+vm.dirty_expire_centisecs = 6000    #  比这个值老的脏页，将被刷到磁盘。6000表示60秒。
+vm.dirty_writeback_centisecs = 50  # pdflush（或其他）后台刷脏页进程的唤醒间隔， 50表示0.5秒。
+vm.dirty_ratio = 80        #  如果系统进程刷脏页太慢，使得系统脏页超过内存 80 % 时，则用户进程如果有写磁盘的操作（如fsync, fdatasync等调用），则需要主动把系统脏页刷出。
+vm.nr_hugepages = 102352    #  大页数量，乘以/proc/meminfo Hugepagesize就是内存数量。
+vm.overcommit_memory = 2     #  在分配内存时，不允许over malloc
+vm.overcommit_ratio = 90     #  当overcommit_memory = 2 时，用于参与计算允许指派的内存大小。
+```
+内存分配策略解释  
+参考   
+http://blog.163.com/digoal@126/blog/static/163877040201563044143325/  
+```
+当vm.overcommit_memory=0时，不允许普通用户overcommit, 但是允许root用户轻微的overcommit。  
+当vm.overcommit_memory=1时，允许overcommit. 比较危险。  
+当vm.overcommit_memory=2时，Committed_AS不能大于CommitLimit。
+commit 限制 计算方法
+              The CommitLimit is calculated with the following formula:
+              CommitLimit = ([total RAM pages] - [total huge TLB pages]) *
+              overcommit_ratio / 100 + [total swap pages]
+              For example, on a system with 1G of physical RAM and 7G
+              of swap with a `vm.overcommit_ratio` of 30 it would
+              yield a CommitLimit of 7.3G.
+[root@digoal postgresql-9.4.4]# free
+             total       used       free     shared    buffers     cached
+Mem:       1914436     713976    1200460      72588      32384     529364
+-/+ buffers/cache:     152228    1762208
+Swap:      1048572     542080     506492
+[root@digoal ~]# cat /proc/meminfo |grep Commit
+CommitLimit:     2005788 kB
+Committed_AS:     132384 kB
+这个例子的2G就是以上公式计算得来。
+
+overcommit限制的初衷是malloc后，内存并不是立即使用掉，所以如果多个进程同时申请一批内存的话，不允许OVERCOMMIT可能导致某些进程申请内存失败，但实际上内存是还有的。所以Linux内核给出了几种选择，2是比较靠谱或者温柔的做法。1的话风险有点大，因为可能会导致OOM。
+
+所以当数据库无法启动时，要么你降低一下数据库申请内存的大小（例如降低shared_buffer或者max conn），要么就是修改一下overcommit的风格。
 ```  
-内核启动参数  
+
+内核启动参数优化总结    
+关闭numa  
+使用deadline调度IO  
 ```  
 kernel /vmlinuz-3.18.24 numa=off elevator=deadline intel_idle.max_cstate=0 scsi_mod.scan=sync  
 ```  
-块设备预读  
+
+块设备优化总结，预读  
 ```  
 blockdev --setra 16384 /dev/dfa  
 blockdev --setra 16384 /dev/dfb  
 blockdev --setra 16384 /dev/dfc  
 blockdev --setra 16384 /dev/dm-0  
 ```  
-数据库参数  
+
+数据库参数优化总结   
 ```  
 max_connections = 300       # (change requires restart)  
 unix_socket_directories = '.'   # comma-separated list of directories  
-shared_buffers = 194GB       # min 128kB  
-huge_pages = on           # on, off, or try  
-work_mem = 256MB # min 64kB  
-maintenance_work_mem = 2GB  # min 1MB  
-autovacuum_work_mem = 2GB   # min 1MB, or -1 to use maintenance_work_mem  
+shared_buffers = 194GB       # 尽量用数据库管理内存，减少双重缓存，提高使用效率  
+huge_pages = on           # on, off, or try  ，使用大页
+work_mem = 256MB # min 64kB  ， 减少外部文件排序的可能，提高效率
+maintenance_work_mem = 2GB  # min 1MB  ， 加速建立索引
+autovacuum_work_mem = 2GB   # min 1MB, or -1 to use maintenance_work_mem  ， 加速垃圾回收
 dynamic_shared_memory_type = mmap      # the default is the first option  
-vacuum_cost_delay = 0      # 0-100 milliseconds  
-bgwriter_delay = 10ms       # 10-10000ms between rounds  
-bgwriter_lru_maxpages = 1000# 0-1000 max buffers written/round  
-bgwriter_lru_multiplier = 10.0          # 0-10.0 multipler on buffers scanned/round  
-effective_io_concurrency = 2           # 1-1000; 0 disables prefetching  
-wal_level = minimal  # minimal, archive, hot_standby, or logical  
-synchronous_commit = off    # synchronization level;  
-wal_sync_method = open_sync    # the default is the first option  
-full_page_writes = off      # recover from partial page writes  
-wal_buffers = 1GB           # min 32kB, -1 sets based on shared_buffers  
-wal_writer_delay = 10ms         # 1-10000 milliseconds  
-commit_delay = 20           # range 0-100000, in microseconds  
-commit_siblings = 9        # range 1-1000  
-checkpoint_timeout = 55min  # range 30s-1h  
-max_wal_size = 320GB  
-checkpoint_completion_target = 0.99     # checkpoint target duration, 0.0 - 1.0  
-random_page_cost = 1.0     # same scale as above  
-effective_cache_size = 240GB  
+vacuum_cost_delay = 0      # 0-100 milliseconds   ， 垃圾回收不妥协，极限压力下，减少膨胀可能性
+bgwriter_delay = 10ms       # 10-10000ms between rounds    ， 刷shared buffer脏页的进程调度间隔，尽量高频调度，减少用户进程申请不到内存而需要主动刷脏页的可能（导致RT升高）。
+bgwriter_lru_maxpages = 1000   # 0-1000 max buffers written/round ,  一次最多刷多少脏页
+bgwriter_lru_multiplier = 10.0          # 0-10.0 multipler on buffers scanned/round  一次扫描多少个块，上次刷出脏页数量的倍数
+effective_io_concurrency = 2           # 1-1000; 0 disables prefetching ， 执行节点为bitmap heap scan时，预读的块数。从而
+wal_level = minimal         # minimal, archive, hot_standby, or logical ， 如果现实环境，建议开启归档。  
+synchronous_commit = off    # synchronization level;    ， 异步提交  
+wal_sync_method = open_sync    # the default is the first option  ， 因为没有standby，所以写xlog选择一个支持O_DIRECT的fsync方法。  
+full_page_writes = off      # recover from partial page writes  ， 生产中，如果有增量备份和归档，可以关闭，提高性能。  
+wal_buffers = 1GB           # min 32kB, -1 sets based on shared_buffers  ，wal buffer大小，如果大量写wal buffer等待，则可以加大。
+wal_writer_delay = 10ms         # 1-10000 milliseconds  wal buffer调度间隔，和bg writer delay类似。
+commit_delay = 20           # range 0-100000, in microseconds  ，分组提交的等待时间
+commit_siblings = 9        # range 1-1000  , 有多少个事务同时进入提交阶段时，就触发分组提交。
+checkpoint_timeout = 55min  # range 30s-1h  时间控制的检查点间隔。
+max_wal_size = 320GB    #   2个检查点之间最多允许产生多少个XLOG文件
+checkpoint_completion_target = 0.99     # checkpoint target duration, 0.0 - 1.0  ，平滑调度间隔，假设上一个检查点到现在这个检查点之间产生了100个XLOG，则这次检查点需要在产生100*checkpoint_completion_target个XLOG文件的过程中完成。PG会根据这些值来调度平滑检查点。
+random_page_cost = 1.0     # same scale as above  , 离散扫描的成本因子，本例使用的SSD IO能力足够好
+effective_cache_size = 240GB  # 可用的OS CACHE
 log_destination = 'csvlog'  # Valid values are combinations of  
 logging_collector = on          # Enable capturing of stderr and csvlog  
 log_truncate_on_rotation = on           # If on, an existing log file with the  
 update_process_title = off  
 track_activities = off  
-autovacuum = on# Enable autovacuum subprocess?  'on'  
-autovacuum_max_workers = 4 # max number of autovacuum subprocesses    
-autovacuum_naptime = 6s  # time between autovacuum runs  
-autovacuum_vacuum_cost_delay = 0    # default vacuum cost delay for  
+autovacuum = on    # Enable autovacuum subprocess?  'on'  
+autovacuum_max_workers = 4 # max number of autovacuum subprocesses    ，允许同时有多少个垃圾回收工作进程。
+autovacuum_naptime = 6s  # time between autovacuum runs   ， 自动垃圾回收探测进程的唤醒间隔
+autovacuum_vacuum_cost_delay = 0    # default vacuum cost delay for  ， 垃圾回收不妥协
 ```  
+其他优化总结：  
+1. 尽量减少费的IO请求，所以本文从块设备，到逻辑卷，到文件系统的块大小都尽量和数据库块大小靠齐。  
+2. 通过对齐，减少IO覆盖写。  
+3. 通过大页减少内存管理开销。  
+4. 通过多个客户端将数据库硬件资源充分利用起来。    
+5. 减少客户端输出日志的开销，降低客户端性能干扰。   
+6. 使用新的编译器，优化编译后的可执行程序质量。   
