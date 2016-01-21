@@ -98,37 +98,73 @@ group越多，可以并行进行的文件和块的allocation就越多。你可�
 也用于crash后的恢复。    
   
 2.3 realtime    
-被划分为很多个小的extents, 要将文件写入到realtime section中，必须使用xfsctl改一下文件描述符的bit位，并且一定要在数据写入前完成。在realtime中的文件大小是realtime extents的倍数关系。    
+被划分为很多个小的extents, 要将文件写入到realtime   section中，必须使用xfsctl改一下文件描述符的bit位，并且一定要在数据写入前完成。在realtime中的文件大小是realtime   extents的倍数关系。      
   
-所以mkfs.xfs时，我们能做的优化：    
-allocation group数量和SIZE相乘等于块设备大小。数量多少和用户需求的并行度相关。    
-allocation group数量最好是下面逻辑卷对应pv数量的倍数，例如有3个PV，则ag可以是9个，或者900个。    
-log最好放在SSD上，速度越快越好。最好不要使用cgroup限制LOG块设备的iops操作。    
-realtime不需要的话，不需要创建。    
--b size=8192  与数据库块大小一致    
--d agcount=90000,sunit=16,swidth=48    
-   假设有90000个并发写操作，使用90000个allocation groups    
-   (单位512 bytes)与lvm或RAID块设备的条带大小对齐，对应8k, 24k。(条带大小，条带宽度)     
-    与lvm或RAID块设备条带跨度大小对齐，以上对应3*8 例如 -i 3 -I 8。    
-  
-### mkfs.xfs 例子    
-注意并不是所有的XFS版本都支持超过4K的blocksize，所以这里的-b size=8192可能在mount时出错。    
-```  
-# mkfs.xfs -f -b size=8192 -l logdev=/dev/mapper/vgdata01-lv02,size=2136997888,sunit=16 -d agcount=9000,sunit=16,swidth=48 /dev/mapper/vgdata01-lv01   
-  
-meta-data=/dev/mapper/vgdata01-lv01 isize=256    agcount=9000, agsize=257813 blks  
-         =           sectsz=512   attr=2  
-data     =           bsize=8192   blocks=2320310784, imaxpct=5  
-         =           sunit=1      swidth=3 blks  
-naming   =version 2  bsize=8192   ascii-ci=0  
-log      =/dev/mapper/vgdata01-lv02 bsize=8192   blocks=260864, version=2  
-         =           sectsz=512   sunit=1 blks, lazy-count=1  
-realtime =none       extsz=8192   blocks=0, rtextents=0  
-  
-或者使用4KB的块  
-# mkfs.xfs -f -b size=4096 -l logdev=/dev/mapper/vgdata01-lv02,size=2136997888,sunit=16 -d agcount=9000,sunit=16,swidth=48 /dev/mapper/vgdata01-lv01  
-```  
-  
+allocation group count数量和AGSIZE相乘等于块设备大小。  
+AG count数量多少和用户需求的并行度相关。  
+同时AG SIZE的取值范围是16M到1TB。  
+agsize绝对不能是条带宽度的倍数。(假设条带数为3，条带大小为8K，则宽度为24K。)  
+如果根据指定agcount算出的agsize是swidth的倍数，会弹出警告：  
+例如下面的例子，  
+agsize=156234 blks 是 swidth=6 blks 的倍数 26039。  
+给出的建议是减掉一个stripe unit即8K，即156234 blks -  sunit 2 blks = 156232 blks。  
+156232 blks换算成字节数= 156232*4096 = 639926272 bytes 或 156232*4 = 624928K  
+```
+#mkfs.xfs -f -b size=4096 -l logdev=/dev/mapper/vgdata01-lv01,size=2136997888,sunit=16 -d agcount=30000,sunit=16,swidth=48 /dev/mapper/vgdata01-lv02
+Warning: AG size is a multiple of stripe width.  This can cause performance
+problems by aligning all AGs on the same disk.  To avoid this, run mkfs with
+an AG size that is one stripe unit smaller, for example 156232.
+meta-data=/dev/mapper/vgdata01-lv02 isize=256    agcount=30000, agsize=156234 blks
+         =                       sectsz=4096  attr=2, projid32bit=1
+         =                       crc=0        finobt=0
+data     =                       bsize=4096   blocks=4686971904, imaxpct=5
+         =                       sunit=2      swidth=6 blks
+naming   =version 2              bsize=4096   ascii-ci=0 ftype=0
+log      =/dev/mapper/vgdata01-lv01 bsize=4096   blocks=521728, version=2
+         =                       sectsz=512   sunit=2 blks, lazy-count=1
+realtime =none                   extsz=4096   blocks=0, rtextents=0
+```
+对于上面这个mkfs.xfs操作，改成以下  
+```
+#mkfs.xfs -f -b size=4096 -l logdev=/dev/mapper/vgdata01-lv01,size=2136997888,sunit=16 -d agsize=639926272,sunit=16,swidth=48 /dev/mapper/vgdata01-lv02
+```
+或  
+```
+#mkfs.xfs -f -b size=4096 -l logdev=/dev/mapper/vgdata01-lv01,size=2136997888,sunit=16 -d agsize=624928k,sunit=16,swidth=48 /dev/mapper/vgdata01-lv02
+```
+输出如下  
+```
+meta-data=/dev/mapper/vgdata01-lv02 isize=256    agcount=30001, agsize=156232 blks  (约600MB)
+         =                       sectsz=4096  attr=2, projid32bit=1
+         =                       crc=0        finobt=0
+data     =                       bsize=4096   blocks=4686971904, imaxpct=5
+         =                       sunit=2      swidth=6 blks
+naming   =version 2              bsize=4096   ascii-ci=0 ftype=0
+log      =/dev/mapper/vgdata01-lv01 bsize=4096   blocks=521728, version=2
+         =                       sectsz=512   sunit=2 blks, lazy-count=1
+realtime =none                   extsz=4096   blocks=0, rtextents=0
+```
+log最好放在SSD上，速度越快越好。最好不要使用cgroup限制LOG块设备的iops操作。  
+realtime不需要的话，不需要创建。  
+-b size=8192  与数据库块大小一致 （但不是所有的xfs版本都支持大于4K的block   size，所以如果你发现mount失败并且告知只支持4K以下的BLOCK，那么请重新格式化）  
+-d agcount=9000,sunit=16,swidth=48  
+   假设有9000个并发写操作，使用9000个allocation groups  
+   (单位512 bytes) 与lvm或RAID块设备的条带大小对齐  
+    与lvm或RAID块设备条带跨度大小对齐，以上对应3*8 例如 -i 3 -I 8。  
+例子  
+```
+#mkfs.xfs -f -b size=4096 -l logdev=/dev/mapper/vgdata01-lv01,size=2136997888,sunit=16 -d agsize=624928k,sunit=16,swidth=48 /dev/mapper/vgdata01-lv02
+meta-data=/dev/mapper/vgdata01-lv02 isize=256    agcount=30001, agsize=156232 blks  (约600MB)
+         =                       sectsz=4096  attr=2, projid32bit=1
+         =                       crc=0        finobt=0
+data     =                       bsize=4096   blocks=4686971904, imaxpct=5
+         =                       sunit=2      swidth=6 blks
+naming   =version 2              bsize=4096   ascii-ci=0 ftype=0
+log      =/dev/mapper/vgdata01-lv01 bsize=4096   blocks=521728, version=2
+         =                       sectsz=512   sunit=2 blks, lazy-count=1
+realtime =none                   extsz=4096   blocks=0, rtextents=0
+```
+
 ## XFS mount 优化部分  
 nobarrier  
 largeio     针对数据仓库，流媒体这种大量连续读的应用    
