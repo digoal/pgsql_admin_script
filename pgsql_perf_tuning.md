@@ -26,7 +26,16 @@ man mkfs.xfs
 man mount  
   
 ## 逻辑卷优化部分  
-  
+对于不在lvm列表的设备，可能要先修改lvm.conf，添加设备号才行。否则不能创建PV。    
+```
+# cat /proc/devices
+252 shannon
+
+[root@localhost ~]# vi /etc/lvm/lvm.conf
+    # types = [ "fd", 16 ]
+    types = [ "shannon", 252 ]
+```
+
 1.1 创建PV前，将块设备对齐（对齐的目的是避免双写，因为SSD有最小写入单元，如果没有对齐，可能出现SSD写多个块），前面1MB最好不要分配，从2048 sector开始分配。  
 （使用pvcreate的--dataalignment参数也可以达到同样的目的。）  
 fdisk -c -u /dev/dfa  
