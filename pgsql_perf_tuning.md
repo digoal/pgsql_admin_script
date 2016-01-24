@@ -1183,6 +1183,11 @@ http://www.postgresql.org/docs/9.2/interactive/libpq-connect.html
 内核参数优化总结    
 以及每项配置的原理  
 ```  
+kernel.shmmax = 135497418752
+kernel.shmmni = 4096
+fs.file-max = 7672460
+fs.aio-max-nr = 1048576
+vm.zone_reclaim_mode=0   # 禁用 numa, 或者在vmlinux中禁止.
 vm.swappiness = 0     #  关闭交换分区
 kernel.shmmax=135497418752     # 最大共享内存段大小
 net.core.rmem_max = 4194304   # The maximum receive socket buffer size in bytes
@@ -1198,7 +1203,7 @@ vm.dirty_ratio = 80        #  如果系统进程刷脏页太慢，使得系统�
 vm.nr_hugepages = 102352    #  大页数量，乘以/proc/meminfo Hugepagesize就是内存数量。
 vm.overcommit_memory = 2     #  在分配内存时，不允许over malloc
 vm.overcommit_ratio = 90     #  当overcommit_memory = 2 时，用于参与计算允许指派的内存大小。
-```
+```  
 内存分配策略解释  
 参考   
 http://blog.163.com/digoal@126/blog/static/163877040201563044143325/  
@@ -1227,6 +1232,19 @@ overcommit限制的初衷是malloc后，内存并不是立即使用掉，所以�
 
 所以当数据库无法启动时，要么你降低一下数据库申请内存的大小（例如降低shared_buffer或者max conn），要么就是修改一下overcommit的风格。
 ```  
+
+vi /etc/security/limits.conf   
+```
+# add by digoal.zhou
+* soft    nofile  131072
+* hard    nofile  131072
+* soft    nproc   131072
+* hard    nproc   131072
+* soft    core    unlimited
+* hard    core    unlimited
+* soft    memlock 500000000
+* hard    memlock 500000000
+```
 
 内核启动参数优化总结    
 关闭numa  
