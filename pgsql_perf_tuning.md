@@ -1208,10 +1208,10 @@ vm.overcommit_ratio = 90     #  当overcommit_memory = 2 时，用于参与计�
 参考   
 http://blog.163.com/digoal@126/blog/static/163877040201563044143325/  
 ```
-当vm.overcommit_memory=0时，不允许普通用户overcommit, 但是允许root用户轻微的overcommit。  
-当vm.overcommit_memory=1时，允许overcommit. 比较危险。  
+当vm.overcommit_memory=0时，允许用户轻微的overcommit。  
+当vm.overcommit_memory=1时，任何情况下都允许申请内存overcommit, 比较危险，常用于一些科学计算应用。  
 当vm.overcommit_memory=2时，Committed_AS不能大于CommitLimit。
-commit 限制 计算方法
+申请内存的限制 计算方法
               The CommitLimit is calculated with the following formula:
               CommitLimit = ([total RAM pages] - [total huge TLB pages]) *
               overcommit_ratio / 100 + [total swap pages]
@@ -1226,9 +1226,15 @@ Swap:      1048572     542080     506492
 [root@digoal ~]# cat /proc/meminfo |grep Commit
 CommitLimit:     2005788 kB
 Committed_AS:     132384 kB
-这个例子的2G就是以上公式计算得来。
+这个例子的2G就是以上公式计算得来。  
 
-overcommit限制的初衷是malloc后，内存并不是立即使用掉，所以如果多个进程同时申请一批内存的话，不允许OVERCOMMIT可能导致某些进程申请内存失败，但实际上内存是还有的。所以Linux内核给出了几种选择，2是比较靠谱或者温柔的做法。1的话风险有点大，因为可能会导致OOM。
+overcommit限制的初衷是malloc后，内存并不是立即使用掉，所以如果多个进程同时申请一批内存的话，不允许OVERCOMMIT可能导致某些进程申请内存失败，但实际上内存是还有的。   
+所以Linux内核给出了几种选择，
+2是比较靠谱或者温柔的做法。   
+1的话风险有点大，虽然可以申请内存，但是实际上可能已经没有足够的内存给程序使用，最终可能会导致OOM。  
+0是最常见的，允许少量的overcommit，但是对于需要超很多内存的情况，不允许。  
+还可以参考代码 : 
+security/commoncap.c::cap_vm_enough_memory()
 
 所以当数据库无法启动时，要么你降低一下数据库申请内存的大小（例如降低shared_buffer或者max conn），要么就是修改一下overcommit的风格。
 ```  
