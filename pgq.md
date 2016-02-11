@@ -370,8 +370,13 @@ when 'table_change_rec0' then
     select x_id into v_x_id from mq.table_change_rec0 where consumed=false order by crt_time,id limit 1;  
     open curs1 for select * from mq.table_change_rec0 where consumed=false and x_id=v_x_id order by crt_time,id for update;  
   else  
-    select crt_time into v_crt_time from mq.table_change_rec0 where consumed=false order by crt_time,id limit n;  
-    open curs1 for select * from mq.table_change_rec0 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+    select crt_time into v_crt_time from mq.table_change_rec0 where consumed=false order by crt_time,id limit 1 offset n-1;  
+    if found then
+      open curs1 for select * from mq.table_change_rec0 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+    else  
+      -- n超出所剩跟踪记录  
+      open curs1 for select * from mq.table_change_rec0 where consumed=false order by crt_time,id for update;  
+    end if;  
   end if;  
 
 fetch curs1 into v_table_change_rec;
@@ -468,8 +473,13 @@ when 'table_change_rec1' then
     select x_id into v_x_id from mq.table_change_rec1 where consumed=false order by crt_time,id limit 1;  
     open curs1 for select * from mq.table_change_rec1 where consumed=false and x_id=v_x_id order by crt_time,id for update;  
   else  
-    select crt_time into v_crt_time from mq.table_change_rec1 where consumed=false order by crt_time,id limit n;  
-    open curs1 for select * from mq.table_change_rec1 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+    select crt_time into v_crt_time from mq.table_change_rec1 where consumed=false order by crt_time,id limit 1 offset n-1;  
+    if found then
+      open curs1 for select * from mq.table_change_rec1 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+    else  
+      -- n超出所剩跟踪记录  
+      open curs1 for select * from mq.table_change_rec1 where consumed=false order by crt_time,id for update;  
+    end if;  
   end if;  
 
 fetch curs1 into v_table_change_rec;
@@ -566,8 +576,13 @@ when 'table_change_rec2' then
     select x_id into v_x_id from mq.table_change_rec2 where consumed=false order by crt_time,id limit 1;  
     open curs1 for select * from mq.table_change_rec2 where consumed=false and x_id=v_x_id order by crt_time,id for update;  
   else  
-    select crt_time into v_crt_time from mq.table_change_rec2 where consumed=false order by crt_time,id limit n;  
-    open curs1 for select * from mq.table_change_rec2 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+    select crt_time into v_crt_time from mq.table_change_rec2 where consumed=false order by crt_time,id limit 1 offset n-1;  
+    if found then
+      open curs1 for select * from mq.table_change_rec2 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+    else  
+      -- n超出所剩跟踪记录  
+      open curs1 for select * from mq.table_change_rec2 where consumed=false order by crt_time,id for update;  
+    end if;  
   end if;  
 
 fetch curs1 into v_table_change_rec;
@@ -664,8 +679,13 @@ when 'table_change_rec3' then
     select x_id into v_x_id from mq.table_change_rec3 where consumed=false order by crt_time,id limit 1;  
     open curs1 for select * from mq.table_change_rec3 where consumed=false and x_id=v_x_id order by crt_time,id for update;  
   else  
-    select crt_time into v_crt_time from mq.table_change_rec3 where consumed=false order by crt_time,id limit n;  
-    open curs1 for select * from mq.table_change_rec3 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+    select crt_time into v_crt_time from mq.table_change_rec3 where consumed=false order by crt_time,id limit 1 offset n-1;  
+    if found then
+      open curs1 for select * from mq.table_change_rec3 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+    else  
+      -- n超出所剩跟踪记录  
+      open curs1 for select * from mq.table_change_rec3 where consumed=false order by crt_time,id for update;  
+    end if;  
   end if;  
 
 fetch curs1 into v_table_change_rec;
@@ -762,8 +782,13 @@ when 'table_change_rec4' then
     select x_id into v_x_id from mq.table_change_rec4 where consumed=false order by crt_time,id limit 1;  
     open curs1 for select * from mq.table_change_rec4 where consumed=false and x_id=v_x_id order by crt_time,id for update;  
   else  
-    select crt_time into v_crt_time from mq.table_change_rec4 where consumed=false order by crt_time,id limit n;  
-    open curs1 for select * from mq.table_change_rec4 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+    select crt_time into v_crt_time from mq.table_change_rec4 where consumed=false order by crt_time,id limit 1 offset n-1;  
+    if found then
+      open curs1 for select * from mq.table_change_rec4 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+    else  
+      -- n超出所剩跟踪记录  
+      open curs1 for select * from mq.table_change_rec4 where consumed=false order by crt_time,id for update;  
+    end if;  
   end if;  
 
 fetch curs1 into v_table_change_rec;
@@ -860,8 +885,13 @@ when 'table_change_rec5' then
     select x_id into v_x_id from mq.table_change_rec5 where consumed=false order by crt_time,id limit 1;  
     open curs1 for select * from mq.table_change_rec5 where consumed=false and x_id=v_x_id order by crt_time,id for update;  
   else  
-    select crt_time into v_crt_time from mq.table_change_rec5 where consumed=false order by crt_time,id limit n;  
-    open curs1 for select * from mq.table_change_rec5 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+    select crt_time into v_crt_time from mq.table_change_rec5 where consumed=false order by crt_time,id limit 1 offset n-1;  
+    if found then
+      open curs1 for select * from mq.table_change_rec5 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+    else  
+      -- n超出所剩跟踪记录  
+      open curs1 for select * from mq.table_change_rec5 where consumed=false order by crt_time,id for update;  
+    end if;  
   end if;  
 
 fetch curs1 into v_table_change_rec;
@@ -958,8 +988,13 @@ when 'table_change_rec6' then
     select x_id into v_x_id from mq.table_change_rec6 where consumed=false order by crt_time,id limit 1;  
     open curs1 for select * from mq.table_change_rec6 where consumed=false and x_id=v_x_id order by crt_time,id for update;  
   else  
-    select crt_time into v_crt_time from mq.table_change_rec6 where consumed=false order by crt_time,id limit n;  
-    open curs1 for select * from mq.table_change_rec6 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+    select crt_time into v_crt_time from mq.table_change_rec6 where consumed=false order by crt_time,id limit 1 offset n-1;  
+    if found then
+      open curs1 for select * from mq.table_change_rec6 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+    else  
+      -- n超出所剩跟踪记录  
+      open curs1 for select * from mq.table_change_rec6 where consumed=false order by crt_time,id for update;  
+    end if;  
   end if;  
 
 fetch curs1 into v_table_change_rec;
