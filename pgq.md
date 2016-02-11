@@ -61,7 +61,7 @@ client_port int    --  客户端端口
 ```
 在时间上创建索引  
 ```
-create index x_id_table_change_rec on mq.table_change_rec(x_id);
+create index x_id_table_change_rec on mq.table_change_rec(x_id) where consumed=false;
 create index crt_time_id_table_change_rec on mq.table_change_rec(crt_time,id) where consumed=false;
 ```
 创建子表  
@@ -330,10 +330,8 @@ declare
   v_vals text := '';
   v_upd_set text := '';
   v_upd_del_where text :='';
-  v_xid_mincmt int8 ;
-  v_xid_maxcmt int8 ;
+  v_x_id int8 ;
   v_max_crt_time timestamp without time zone;
-  v_max_id int8;
 begin
   if n <=0 then
     -- raise notice 'n must be > 0.';
@@ -364,21 +362,17 @@ begin
 case v_tablename
 
 when 'table_change_rec0' then
-  -- 取提交时间分别是最大, 最小对应的XID
-  select x_id into v_xid_mincmt from mq.table_change_rec0 where consumed=false order by crt_time,id limit 1 offset 0;
-  select x_id into v_xid_maxcmt from mq.table_change_rec0 where consumed=false order by crt_time,id limit 1 offset n-1;
-  if not found then
-    -- n 大于 mq.table_change_rec0 总记录数
-    open curs1 for select * from mq.table_change_rec0 where consumed=false order by crt_time,id for update;
-  else
-    -- 如果xid相等,则以xid不限制limit获取 
-    if v_xid_mincmt = v_xid_maxcmt then
-      open curs1 for select * from mq.table_change_rec0 where consumed=false and x_id=v_xid_maxcmt order by crt_time,id for update;
-    else
-      select max(crt_time),max(id) into v_max_crt_time,v_max_id from (select x_id,crt_time,id from mq.table_change_rec0 where consumed=false order by crt_time,id limit n) t where x_id<>v_xid_maxcmt;
-      open curs1 for select * from mq.table_change_rec0 where consumed=false and x_id<>v_xid_maxcmt and crt_time<=v_max_crt_time and (case when crt_time=v_max_crt_time then id<=v_max_id else true end) order by crt_time,id for update;
-    end if;
-  end if;
+  -- 获取提交时间( 每个事务的结束时间获取原理, 通过延迟触发器, 在事务结束时触发行触发器, 通过mq.get_commit_time()函数获取时间, 可以确保事务内所有row的时间戳一致. )
+  -- 回放顺序, 和事务提交顺序一致. 最小原子单位为事务.
+  -- 单个事务包含多个SQL时, 可以通过command id来区分先后顺序, 或者通过序列来区分先后顺序.
+  -- 多个事务同一时刻提交, 如果时间戳一致, 如果每个事务都包含多ROW, 则可能会混合顺序执行. 批量回放时合并成一个事务回放, 不影响一致性. 单一事务回放时, 随机选取哪个事务先执行.
+  if n=1 then  
+    select x_id into v_x_id from mq.table_change_rec0 where consumed=false order by crt_time,id limit 1;  
+    open curs1 for select * from mq.table_change_rec0 where consumed=false and x_id=v_x_id order by crt_time,id for update;  
+  else  
+    select crt_time into v_crt_time from mq.table_change_rec0 where consumed=false order by crt_time,id limit n;  
+    open curs1 for select * from mq.table_change_rec0 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+  end if;  
 
 fetch curs1 into v_table_change_rec;
 LOOP
@@ -466,21 +460,17 @@ END LOOP;
 
 
 when 'table_change_rec1' then
-  -- 取提交时间分别是最大, 最小对应的XID
-  select x_id into v_xid_mincmt from mq.table_change_rec1 where consumed=false order by crt_time,id limit 1 offset 0;
-  select x_id into v_xid_maxcmt from mq.table_change_rec1 where consumed=false order by crt_time,id limit 1 offset n-1;
-  if not found then
-    -- n 大于 mq.table_change_rec1 总记录数
-    open curs1 for select * from mq.table_change_rec1 where consumed=false order by crt_time,id for update;
-  else
-    -- 如果xid相等,则以xid不限制limit获取 
-    if v_xid_mincmt = v_xid_maxcmt then
-      open curs1 for select * from mq.table_change_rec1 where consumed=false and x_id=v_xid_maxcmt order by crt_time,id for update;
-    else
-      select max(crt_time),max(id) into v_max_crt_time,v_max_id from (select x_id,crt_time,id from mq.table_change_rec1 where consumed=false order by crt_time,id limit n) t where x_id<>v_xid_maxcmt;
-      open curs1 for select * from mq.table_change_rec1 where consumed=false and x_id<>v_xid_maxcmt and crt_time<=v_max_crt_time and (case when crt_time=v_max_crt_time then id<=v_max_id else true end) order by crt_time,id for update;
-    end if;
-  end if;
+  -- 获取提交时间( 每个事务的结束时间获取原理, 通过延迟触发器, 在事务结束时触发行触发器, 通过mq.get_commit_time()函数获取时间, 可以确保事务内所有row的时间戳一致. )
+  -- 回放顺序, 和事务提交顺序一致. 最小原子单位为事务.
+  -- 单个事务包含多个SQL时, 可以通过command id来区分先后顺序, 或者通过序列来区分先后顺序.
+  -- 多个事务同一时刻提交, 如果时间戳一致, 如果每个事务都包含多ROW, 则可能会混合顺序执行. 批量回放时合并成一个事务回放, 不影响一致性. 单一事务回放时, 随机选取哪个事务先执行.
+  if n=1 then  
+    select x_id into v_x_id from mq.table_change_rec1 where consumed=false order by crt_time,id limit 1;  
+    open curs1 for select * from mq.table_change_rec1 where consumed=false and x_id=v_x_id order by crt_time,id for update;  
+  else  
+    select crt_time into v_crt_time from mq.table_change_rec1 where consumed=false order by crt_time,id limit n;  
+    open curs1 for select * from mq.table_change_rec1 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+  end if;  
 
 fetch curs1 into v_table_change_rec;
 LOOP
@@ -568,21 +558,17 @@ END LOOP;
 
 
 when 'table_change_rec2' then
-  -- 取提交时间分别是最大, 最小对应的XID
-  select x_id into v_xid_mincmt from mq.table_change_rec2 where consumed=false order by crt_time,id limit 1 offset 0;
-  select x_id into v_xid_maxcmt from mq.table_change_rec2 where consumed=false order by crt_time,id limit 1 offset n-1;
-  if not found then
-    -- n 大于 mq.table_change_rec2 总记录数
-    open curs1 for select * from mq.table_change_rec2 where consumed=false order by crt_time,id for update;
-  else
-    -- 如果xid相等,则以xid不限制limit获取 
-    if v_xid_mincmt = v_xid_maxcmt then
-      open curs1 for select * from mq.table_change_rec2 where consumed=false and x_id=v_xid_maxcmt order by crt_time,id for update;
-    else
-      select max(crt_time),max(id) into v_max_crt_time,v_max_id from (select x_id,crt_time,id from mq.table_change_rec2 where consumed=false order by crt_time,id limit n) t where x_id<>v_xid_maxcmt;
-      open curs1 for select * from mq.table_change_rec2 where consumed=false and x_id<>v_xid_maxcmt and crt_time<=v_max_crt_time and (case when crt_time=v_max_crt_time then id<=v_max_id else true end) order by crt_time,id for update;
-    end if;
-  end if;
+  -- 获取提交时间( 每个事务的结束时间获取原理, 通过延迟触发器, 在事务结束时触发行触发器, 通过mq.get_commit_time()函数获取时间, 可以确保事务内所有row的时间戳一致. )
+  -- 回放顺序, 和事务提交顺序一致. 最小原子单位为事务.
+  -- 单个事务包含多个SQL时, 可以通过command id来区分先后顺序, 或者通过序列来区分先后顺序.
+  -- 多个事务同一时刻提交, 如果时间戳一致, 如果每个事务都包含多ROW, 则可能会混合顺序执行. 批量回放时合并成一个事务回放, 不影响一致性. 单一事务回放时, 随机选取哪个事务先执行.
+  if n=1 then  
+    select x_id into v_x_id from mq.table_change_rec2 where consumed=false order by crt_time,id limit 1;  
+    open curs1 for select * from mq.table_change_rec2 where consumed=false and x_id=v_x_id order by crt_time,id for update;  
+  else  
+    select crt_time into v_crt_time from mq.table_change_rec2 where consumed=false order by crt_time,id limit n;  
+    open curs1 for select * from mq.table_change_rec2 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+  end if;  
 
 fetch curs1 into v_table_change_rec;
 LOOP
@@ -670,21 +656,17 @@ END LOOP;
 
 
 when 'table_change_rec3' then
-  -- 取提交时间分别是最大, 最小对应的XID
-  select x_id into v_xid_mincmt from mq.table_change_rec3 where consumed=false order by crt_time,id limit 1 offset 0;
-  select x_id into v_xid_maxcmt from mq.table_change_rec3 where consumed=false order by crt_time,id limit 1 offset n-1;
-  if not found then
-    -- n 大于 mq.table_change_rec3 总记录数
-    open curs1 for select * from mq.table_change_rec3 where consumed=false order by crt_time,id for update;
-  else
-    -- 如果xid相等,则以xid不限制limit获取 
-    if v_xid_mincmt = v_xid_maxcmt then
-      open curs1 for select * from mq.table_change_rec3 where consumed=false and x_id=v_xid_maxcmt order by crt_time,id for update;
-    else
-      select max(crt_time),max(id) into v_max_crt_time,v_max_id from (select x_id,crt_time,id from mq.table_change_rec3 where consumed=false order by crt_time,id limit n) t where x_id<>v_xid_maxcmt;
-      open curs1 for select * from mq.table_change_rec3 where consumed=false and x_id<>v_xid_maxcmt and crt_time<=v_max_crt_time and (case when crt_time=v_max_crt_time then id<=v_max_id else true end) order by crt_time,id for update;
-    end if;
-  end if;
+  -- 获取提交时间( 每个事务的结束时间获取原理, 通过延迟触发器, 在事务结束时触发行触发器, 通过mq.get_commit_time()函数获取时间, 可以确保事务内所有row的时间戳一致. )
+  -- 回放顺序, 和事务提交顺序一致. 最小原子单位为事务.
+  -- 单个事务包含多个SQL时, 可以通过command id来区分先后顺序, 或者通过序列来区分先后顺序.
+  -- 多个事务同一时刻提交, 如果时间戳一致, 如果每个事务都包含多ROW, 则可能会混合顺序执行. 批量回放时合并成一个事务回放, 不影响一致性. 单一事务回放时, 随机选取哪个事务先执行.
+  if n=1 then  
+    select x_id into v_x_id from mq.table_change_rec3 where consumed=false order by crt_time,id limit 1;  
+    open curs1 for select * from mq.table_change_rec3 where consumed=false and x_id=v_x_id order by crt_time,id for update;  
+  else  
+    select crt_time into v_crt_time from mq.table_change_rec3 where consumed=false order by crt_time,id limit n;  
+    open curs1 for select * from mq.table_change_rec3 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+  end if;  
 
 fetch curs1 into v_table_change_rec;
 LOOP
@@ -772,21 +754,17 @@ END LOOP;
 
 
 when 'table_change_rec4' then
-  -- 取提交时间分别是最大, 最小对应的XID
-  select x_id into v_xid_mincmt from mq.table_change_rec4 where consumed=false order by crt_time,id limit 1 offset 0;
-  select x_id into v_xid_maxcmt from mq.table_change_rec4 where consumed=false order by crt_time,id limit 1 offset n-1;
-  if not found then
-    -- n 大于 mq.table_change_rec4 总记录数
-    open curs1 for select * from mq.table_change_rec4 where consumed=false order by crt_time,id for update;
-  else
-    -- 如果xid相等,则以xid不限制limit获取 
-    if v_xid_mincmt = v_xid_maxcmt then
-      open curs1 for select * from mq.table_change_rec4 where consumed=false and x_id=v_xid_maxcmt order by crt_time,id for update;
-    else
-      select max(crt_time),max(id) into v_max_crt_time,v_max_id from (select x_id,crt_time,id from mq.table_change_rec4 where consumed=false order by crt_time,id limit n) t where x_id<>v_xid_maxcmt;
-      open curs1 for select * from mq.table_change_rec4 where consumed=false and x_id<>v_xid_maxcmt and crt_time<=v_max_crt_time and (case when crt_time=v_max_crt_time then id<=v_max_id else true end) order by crt_time,id for update;
-    end if;
-  end if;
+  -- 获取提交时间( 每个事务的结束时间获取原理, 通过延迟触发器, 在事务结束时触发行触发器, 通过mq.get_commit_time()函数获取时间, 可以确保事务内所有row的时间戳一致. )
+  -- 回放顺序, 和事务提交顺序一致. 最小原子单位为事务.
+  -- 单个事务包含多个SQL时, 可以通过command id来区分先后顺序, 或者通过序列来区分先后顺序.
+  -- 多个事务同一时刻提交, 如果时间戳一致, 如果每个事务都包含多ROW, 则可能会混合顺序执行. 批量回放时合并成一个事务回放, 不影响一致性. 单一事务回放时, 随机选取哪个事务先执行.
+  if n=1 then  
+    select x_id into v_x_id from mq.table_change_rec4 where consumed=false order by crt_time,id limit 1;  
+    open curs1 for select * from mq.table_change_rec4 where consumed=false and x_id=v_x_id order by crt_time,id for update;  
+  else  
+    select crt_time into v_crt_time from mq.table_change_rec4 where consumed=false order by crt_time,id limit n;  
+    open curs1 for select * from mq.table_change_rec4 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+  end if;  
 
 fetch curs1 into v_table_change_rec;
 LOOP
@@ -874,21 +852,17 @@ END LOOP;
 
 
 when 'table_change_rec5' then
-  -- 取提交时间分别是最大, 最小对应的XID
-  select x_id into v_xid_mincmt from mq.table_change_rec5 where consumed=false order by crt_time,id limit 1 offset 0;
-  select x_id into v_xid_maxcmt from mq.table_change_rec5 where consumed=false order by crt_time,id limit 1 offset n-1;
-  if not found then
-    -- n 大于 mq.table_change_rec5 总记录数
-    open curs1 for select * from mq.table_change_rec5 where consumed=false order by crt_time,id for update;
-  else
-    -- 如果xid相等,则以xid不限制limit获取 
-    if v_xid_mincmt = v_xid_maxcmt then
-      open curs1 for select * from mq.table_change_rec5 where consumed=false and x_id=v_xid_maxcmt order by crt_time,id for update;
-    else
-      select max(crt_time),max(id) into v_max_crt_time,v_max_id from (select x_id,crt_time,id from mq.table_change_rec5 where consumed=false order by crt_time,id limit n) t where x_id<>v_xid_maxcmt;
-      open curs1 for select * from mq.table_change_rec5 where consumed=false and x_id<>v_xid_maxcmt and crt_time<=v_max_crt_time and (case when crt_time=v_max_crt_time then id<=v_max_id else true end) order by crt_time,id for update;
-    end if;
-  end if;
+  -- 获取提交时间( 每个事务的结束时间获取原理, 通过延迟触发器, 在事务结束时触发行触发器, 通过mq.get_commit_time()函数获取时间, 可以确保事务内所有row的时间戳一致. )
+  -- 回放顺序, 和事务提交顺序一致. 最小原子单位为事务.
+  -- 单个事务包含多个SQL时, 可以通过command id来区分先后顺序, 或者通过序列来区分先后顺序.
+  -- 多个事务同一时刻提交, 如果时间戳一致, 如果每个事务都包含多ROW, 则可能会混合顺序执行. 批量回放时合并成一个事务回放, 不影响一致性. 单一事务回放时, 随机选取哪个事务先执行.
+  if n=1 then  
+    select x_id into v_x_id from mq.table_change_rec5 where consumed=false order by crt_time,id limit 1;  
+    open curs1 for select * from mq.table_change_rec5 where consumed=false and x_id=v_x_id order by crt_time,id for update;  
+  else  
+    select crt_time into v_crt_time from mq.table_change_rec5 where consumed=false order by crt_time,id limit n;  
+    open curs1 for select * from mq.table_change_rec5 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+  end if;  
 
 fetch curs1 into v_table_change_rec;
 LOOP
@@ -976,21 +950,17 @@ END LOOP;
 
 
 when 'table_change_rec6' then
-  -- 取提交时间分别是最大, 最小对应的XID
-  select x_id into v_xid_mincmt from mq.table_change_rec6 where consumed=false order by crt_time,id limit 1 offset 0;
-  select x_id into v_xid_maxcmt from mq.table_change_rec6 where consumed=false order by crt_time,id limit 1 offset n-1;
-  if not found then
-    -- n 大于 mq.table_change_rec6 总记录数
-    open curs1 for select * from mq.table_change_rec6 where consumed=false order by crt_time,id for update;
-  else
-    -- 如果xid相等,则以xid不限制limit获取 
-    if v_xid_mincmt = v_xid_maxcmt then
-      open curs1 for select * from mq.table_change_rec6 where consumed=false and x_id=v_xid_maxcmt order by crt_time,id for update;
-    else
-      select max(crt_time),max(id) into v_max_crt_time,v_max_id from (select x_id,crt_time,id from mq.table_change_rec6 where consumed=false order by crt_time,id limit n) t where x_id<>v_xid_maxcmt;
-      open curs1 for select * from mq.table_change_rec6 where consumed=false and x_id<>v_xid_maxcmt and crt_time<=v_max_crt_time and (case when crt_time=v_max_crt_time then id<=v_max_id else true end) order by crt_time,id for update;
-    end if;
-  end if;
+  -- 获取提交时间( 每个事务的结束时间获取原理, 通过延迟触发器, 在事务结束时触发行触发器, 通过mq.get_commit_time()函数获取时间, 可以确保事务内所有row的时间戳一致. )
+  -- 回放顺序, 和事务提交顺序一致. 最小原子单位为事务.
+  -- 单个事务包含多个SQL时, 可以通过command id来区分先后顺序, 或者通过序列来区分先后顺序.
+  -- 多个事务同一时刻提交, 如果时间戳一致, 如果每个事务都包含多ROW, 则可能会混合顺序执行. 批量回放时合并成一个事务回放, 不影响一致性. 单一事务回放时, 随机选取哪个事务先执行.
+  if n=1 then  
+    select x_id into v_x_id from mq.table_change_rec6 where consumed=false order by crt_time,id limit 1;  
+    open curs1 for select * from mq.table_change_rec6 where consumed=false and x_id=v_x_id order by crt_time,id for update;  
+  else  
+    select crt_time into v_crt_time from mq.table_change_rec6 where consumed=false order by crt_time,id limit n;  
+    open curs1 for select * from mq.table_change_rec6 where consumed=false and crt_time<=v_crt_time order by crt_time,id for update;  
+  end if;  
 
 fetch curs1 into v_table_change_rec;
 LOOP
