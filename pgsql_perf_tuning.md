@@ -1201,7 +1201,7 @@ vm.dirty_expire_centisecs = 6000    #  比这个值老的脏页，将被刷到�
 vm.dirty_writeback_centisecs = 50  # pdflush（或其他）后台刷脏页进程的唤醒间隔， 50表示0.5秒。
 vm.dirty_ratio = 80        #  如果系统进程刷脏页太慢，使得系统脏页超过内存 80 % 时，则用户进程如果有写磁盘的操作（如fsync, fdatasync等调用），则需要主动把系统脏页刷出。
 vm.nr_hugepages = 102352    #  大页数量，乘以/proc/meminfo Hugepagesize就是内存数量。
-vm.overcommit_memory = 2     #  在分配内存时，不允许over malloc
+vm.overcommit_memory = 0     #  在分配内存时，允许少量over malloc
 vm.overcommit_ratio = 90     #  当overcommit_memory = 2 时，用于参与计算允许指派的内存大小。
 ```  
 内存分配策略解释  
