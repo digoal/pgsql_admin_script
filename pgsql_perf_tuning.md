@@ -1243,10 +1243,10 @@ security/commoncap.c::cap_vm_enough_memory()
 vi /etc/security/limits.conf   
 ```
 # add by digoal.zhou
-* soft    nofile  131072
-* hard    nofile  131072
-* soft    nproc   131072
-* hard    nproc   131072
+* soft    nofile  655360
+* hard    nofile  655360
+* soft    nproc   655360
+* hard    nproc   655360
 * soft    core    unlimited
 * hard    core    unlimited
 * soft    memlock 500000000
