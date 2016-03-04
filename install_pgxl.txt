@@ -455,6 +455,9 @@ psql -c "EXECUTE DIRECT ON (data16) 'SELECT pgxc_pool_reload()'" postgres
 
 . ./xl.sh
 
+配置pg_hba.conf，节点间互信。
+安全考虑，建议使用证书认证。
+
 test
 
 psql 
