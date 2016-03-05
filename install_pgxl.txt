@@ -66,6 +66,7 @@ keepalives_count = 10
 log_file = 'gtm.log'           
 log_min_messages = ERROR
 
+vi /disk1/digoal/pgxl/gtm_proxy/gtm_proxy.conf
 nodename = 'one'              
 listen_addresses = '0.0.0.0'  
 port = 6666                   
