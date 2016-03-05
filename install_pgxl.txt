@@ -43,6 +43,9 @@ pg_ctl stop -m fast -D /disk1/digoal/pgxl/data14
 pg_ctl stop -m fast -D /disk1/digoal/pgxl/data15
 pg_ctl stop -m fast -D /disk1/digoal/pgxl/data16
 pg_ctl stop -m fast -D /disk1/digoal/pgxl/co1
+sleep 5
+gtm_ctl stop -Z gtm_proxy -D /disk1/digoal/pgxl/gtm_proxy
+sleep 5
 gtm_ctl stop -Z gtm -D /disk1/digoal/pgxl/gtm
 
 
@@ -50,17 +53,30 @@ rm -rf /disk1/digoal/pgxl
 mkdir -p /disk1/digoal/pgxl
 
 initgtm -D /disk1/digoal/pgxl/gtm -Z gtm
+initgtm -D /disk1/digoal/pgxl/gtm_proxy -Z gtm_proxy
 
 vi /disk1/digoal/pgxl/gtm/gtm.conf
 nodename = 'one'               
 listen_addresses = '0.0.0.0'   
-port = 6666                    
+port = 6668                    
 startup = ACT                  
 keepalives_idle = 60           
 keepalives_interval = 10       
 keepalives_count = 10          
 log_file = 'gtm.log'           
-log_min_messages = WARNING     
+log_min_messages = ERROR
+
+nodename = 'one'              
+listen_addresses = '0.0.0.0'  
+port = 6666                   
+gtm_host = 'xxx.xxx.xxx.xxx'  
+gtm_port = 6668               
+gtm_connect_retry_interval = 1
+keepalives_idle = 60          
+keepalives_interval = 10      
+keepalives_count = 10         
+log_file = 'gtm_proxy.log'    
+log_min_messages = ERROR      
 
 vi initxl.sh
 
@@ -84,10 +100,14 @@ initdb -D /disk1/digoal/pgxl/data16 -E UTF8 --locale=C -U postgres --nodename da
 
 . ./initxl.sh
 
+
 vi xlstart.sh
 gtm_ctl start -Z gtm -D /disk1/digoal/pgxl/gtm
+sleep 5
+gtm_ctl start -Z gtm_proxy -D /disk1/digoal/pgxl/gtm_proxy
+sleep 5
 
-nohup postgres --datanode -c max_pool_size=1024 -c max_datanodes=256 -c port=18132 -c pooler_port=19101 -c gtm_host='127.0.0.1' -c gtm_port=6666  -c listen_addresses='0.0.0.0' -c max_connections=2048 -c unix_socket_directories='.' -c tcp_keepalives_idle=60 -c tcp_keepalives_interval=10 -c tcp_keepalives_count=10 -c shared_buffers=2GB -c maintenance_work_mem=4GB -c synchronous_commit=off -c full_page_writes=off -c wal_buffers=16MB -c wal_writer_delay=10ms -c max_wal_size=4GB -c checkpoint_timeout=30min -c log_destination=csvlog -c logging_collector=on -c log_truncate_on_rotation=on -c log_error_verbosity=verbose -c autovacuum_naptime=1s -c autovacuum_max_workers=4 -D /disk1/digoal/pgxl/data1 >/dev/null 2>&1 &
+nohup postgres --datanode -c max_pool_size=1024 -c max_datanodes=256 -c port=18132 -c pooler_port=19101 -c gtm_host='127.0.0.1' -c gtm_port=6666  -c listen_addresses='0.0.0.0' -c max_connections=100 -c max_prepared_transactions=100 -c unix_socket_directories='.' -c tcp_keepalives_idle=60 -c tcp_keepalives_interval=10 -c tcp_keepalives_count=10 -c shared_buffers=2GB -c maintenance_work_mem=4GB -c synchronous_commit=off -c full_page_writes=off -c wal_buffers=16MB -c wal_writer_delay=10ms -c max_wal_size=4GB -c checkpoint_timeout=30min -c log_destination=csvlog -c logging_collector=on -c log_truncate_on_rotation=on -c log_error_verbosity=verbose -c autovacuum_naptime=1s -c autovacuum_max_workers=4 -D /disk1/digoal/pgxl/data1 >/dev/null 2>&1 &
 
 nohup postgres --datanode -c max_pool_size=1024 -c max_datanodes=256 -c port=18133 -c pooler_port=19102 -c gtm_host='127.0.0.1' -c gtm_port=6666  -c listen_addresses='0.0.0.0' -c max_connections=2048 -c unix_socket_directories='.' -c tcp_keepalives_idle=60 -c tcp_keepalives_interval=10 -c tcp_keepalives_count=10 -c shared_buffers=2GB -c maintenance_work_mem=4GB -c synchronous_commit=off -c full_page_writes=off -c wal_buffers=16MB -c wal_writer_delay=10ms -c max_wal_size=4GB -c checkpoint_timeout=30min -c log_destination=csvlog -c logging_collector=on -c log_truncate_on_rotation=on -c log_error_verbosity=verbose -c autovacuum_naptime=1s -c autovacuum_max_workers=4 -D /disk1/digoal/pgxl/data2 >/dev/null 2>&1 &
 
@@ -126,7 +146,7 @@ nohup postgres --coordinator -c max_pool_size=1024 -c max_datanodes=256 -c port=
 
 vi xl.sh
 
-psql -c "ALTER NODE co1 WITH (TYPE = 'coordinator', HOST='127.0.0.1', PORT = 1991)" postgres
+psql -c "CREATE NODE co1 WITH (TYPE = 'coordinator', HOST='127.0.0.1', PORT = 1991)" postgres
 psql -c "CREATE NODE data1 WITH (TYPE = 'datanode', HOST='127.0.0.1', PORT = 18132)" postgres
 psql -c "CREATE NODE data2 WITH (TYPE = 'datanode', HOST='127.0.0.1', PORT = 18133)" postgres
 psql -c "CREATE NODE data3 WITH (TYPE = 'datanode', HOST='127.0.0.1', PORT = 18134)" postgres
@@ -147,7 +167,7 @@ psql -c "SELECT pgxc_pool_reload()" postgres
 
 
 psql -c "EXECUTE DIRECT ON (data1) 'CREATE NODE co1 WITH (TYPE = ''coordinator'', HOST=''127.0.0.1'', PORT = 1991)'" postgres
-psql -c "EXECUTE DIRECT ON (data1) 'ALTER NODE data1 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18132)'" postgres
+psql -c "EXECUTE DIRECT ON (data1) 'CREATE NODE data1 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18132)'" postgres
 psql -c "EXECUTE DIRECT ON (data1) 'CREATE NODE data2 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18133)'" postgres
 psql -c "EXECUTE DIRECT ON (data1) 'CREATE NODE data3 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18134)'" postgres
 psql -c "EXECUTE DIRECT ON (data1) 'CREATE NODE data4 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18135)'" postgres
@@ -166,7 +186,7 @@ psql -c "EXECUTE DIRECT ON (data1) 'CREATE NODE data16 WITH (TYPE = ''datanode''
 
 psql -c "EXECUTE DIRECT ON (data2) 'CREATE NODE co1 WITH (TYPE = ''coordinator'', HOST=''127.0.0.1'', PORT = 1991)'" postgres
 psql -c "EXECUTE DIRECT ON (data2) 'CREATE NODE data1 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18132)'" postgres
-psql -c "EXECUTE DIRECT ON (data2) 'ALTER NODE data2 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18133)'" postgres
+psql -c "EXECUTE DIRECT ON (data2) 'CREATE NODE data2 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18133)'" postgres
 psql -c "EXECUTE DIRECT ON (data2) 'CREATE NODE data3 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18134)'" postgres
 psql -c "EXECUTE DIRECT ON (data2) 'CREATE NODE data4 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18135)'" postgres
 psql -c "EXECUTE DIRECT ON (data2) 'CREATE NODE data5 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18136)'" postgres
@@ -185,7 +205,7 @@ psql -c "EXECUTE DIRECT ON (data2) 'CREATE NODE data16 WITH (TYPE = ''datanode''
 psql -c "EXECUTE DIRECT ON (data3) 'CREATE NODE co1 WITH (TYPE = ''coordinator'', HOST=''127.0.0.1'', PORT = 1991)'" postgres
 psql -c "EXECUTE DIRECT ON (data3) 'CREATE NODE data1 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18132)'" postgres
 psql -c "EXECUTE DIRECT ON (data3) 'CREATE NODE data2 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18133)'" postgres
-psql -c "EXECUTE DIRECT ON (data3) 'ALTER NODE data3 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18134)'" postgres
+psql -c "EXECUTE DIRECT ON (data3) 'CREATE NODE data3 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18134)'" postgres
 psql -c "EXECUTE DIRECT ON (data3) 'CREATE NODE data4 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18135)'" postgres
 psql -c "EXECUTE DIRECT ON (data3) 'CREATE NODE data5 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18136)'" postgres
 psql -c "EXECUTE DIRECT ON (data3) 'CREATE NODE data6 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18137)'" postgres
@@ -204,7 +224,7 @@ psql -c "EXECUTE DIRECT ON (data4) 'CREATE NODE co1 WITH (TYPE = ''coordinator''
 psql -c "EXECUTE DIRECT ON (data4) 'CREATE NODE data1 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18132)'" postgres
 psql -c "EXECUTE DIRECT ON (data4) 'CREATE NODE data2 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18133)'" postgres
 psql -c "EXECUTE DIRECT ON (data4) 'CREATE NODE data3 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18134)'" postgres
-psql -c "EXECUTE DIRECT ON (data4) 'ALTER NODE data4 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18135)'" postgres
+psql -c "EXECUTE DIRECT ON (data4) 'CREATE NODE data4 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18135)'" postgres
 psql -c "EXECUTE DIRECT ON (data4) 'CREATE NODE data5 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18136)'" postgres
 psql -c "EXECUTE DIRECT ON (data4) 'CREATE NODE data6 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18137)'" postgres
 psql -c "EXECUTE DIRECT ON (data4) 'CREATE NODE data7 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18138)'" postgres
@@ -223,7 +243,7 @@ psql -c "EXECUTE DIRECT ON (data5) 'CREATE NODE data1 WITH (TYPE = ''datanode'',
 psql -c "EXECUTE DIRECT ON (data5) 'CREATE NODE data2 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18133)'" postgres
 psql -c "EXECUTE DIRECT ON (data5) 'CREATE NODE data3 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18134)'" postgres
 psql -c "EXECUTE DIRECT ON (data5) 'CREATE NODE data4 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18135)'" postgres
-psql -c "EXECUTE DIRECT ON (data5) 'ALTER NODE data5 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18136)'" postgres
+psql -c "EXECUTE DIRECT ON (data5) 'CREATE NODE data5 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18136)'" postgres
 psql -c "EXECUTE DIRECT ON (data5) 'CREATE NODE data6 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18137)'" postgres
 psql -c "EXECUTE DIRECT ON (data5) 'CREATE NODE data7 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18138)'" postgres
 psql -c "EXECUTE DIRECT ON (data5) 'CREATE NODE data8 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18139)'" postgres
@@ -242,7 +262,7 @@ psql -c "EXECUTE DIRECT ON (data6) 'CREATE NODE data2 WITH (TYPE = ''datanode'',
 psql -c "EXECUTE DIRECT ON (data6) 'CREATE NODE data3 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18134)'" postgres
 psql -c "EXECUTE DIRECT ON (data6) 'CREATE NODE data4 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18135)'" postgres
 psql -c "EXECUTE DIRECT ON (data6) 'CREATE NODE data5 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18136)'" postgres
-psql -c "EXECUTE DIRECT ON (data6) 'ALTER NODE data6 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18137)'" postgres
+psql -c "EXECUTE DIRECT ON (data6) 'CREATE NODE data6 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18137)'" postgres
 psql -c "EXECUTE DIRECT ON (data6) 'CREATE NODE data7 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18138)'" postgres
 psql -c "EXECUTE DIRECT ON (data6) 'CREATE NODE data8 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18139)'" postgres
 psql -c "EXECUTE DIRECT ON (data6) 'CREATE NODE data9 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18140)'" postgres
@@ -261,7 +281,7 @@ psql -c "EXECUTE DIRECT ON (data7) 'CREATE NODE data3 WITH (TYPE = ''datanode'',
 psql -c "EXECUTE DIRECT ON (data7) 'CREATE NODE data4 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18135)'" postgres
 psql -c "EXECUTE DIRECT ON (data7) 'CREATE NODE data5 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18136)'" postgres
 psql -c "EXECUTE DIRECT ON (data7) 'CREATE NODE data6 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18137)'" postgres
-psql -c "EXECUTE DIRECT ON (data7) 'ALTER NODE data7 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18138)'" postgres
+psql -c "EXECUTE DIRECT ON (data7) 'CREATE NODE data7 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18138)'" postgres
 psql -c "EXECUTE DIRECT ON (data7) 'CREATE NODE data8 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18139)'" postgres
 psql -c "EXECUTE DIRECT ON (data7) 'CREATE NODE data9 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18140)'" postgres
 psql -c "EXECUTE DIRECT ON (data7) 'CREATE NODE data10 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18141)'" postgres
@@ -280,7 +300,7 @@ psql -c "EXECUTE DIRECT ON (data8) 'CREATE NODE data4 WITH (TYPE = ''datanode'',
 psql -c "EXECUTE DIRECT ON (data8) 'CREATE NODE data5 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18136)'" postgres
 psql -c "EXECUTE DIRECT ON (data8) 'CREATE NODE data6 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18137)'" postgres
 psql -c "EXECUTE DIRECT ON (data8) 'CREATE NODE data7 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18138)'" postgres
-psql -c "EXECUTE DIRECT ON (data8) 'ALTER NODE data8 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18139)'" postgres
+psql -c "EXECUTE DIRECT ON (data8) 'CREATE NODE data8 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18139)'" postgres
 psql -c "EXECUTE DIRECT ON (data8) 'CREATE NODE data9 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18140)'" postgres
 psql -c "EXECUTE DIRECT ON (data8) 'CREATE NODE data10 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18141)'" postgres
 psql -c "EXECUTE DIRECT ON (data8) 'CREATE NODE data11 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18142)'" postgres
@@ -299,7 +319,7 @@ psql -c "EXECUTE DIRECT ON (data9) 'CREATE NODE data5 WITH (TYPE = ''datanode'',
 psql -c "EXECUTE DIRECT ON (data9) 'CREATE NODE data6 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18137)'" postgres
 psql -c "EXECUTE DIRECT ON (data9) 'CREATE NODE data7 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18138)'" postgres
 psql -c "EXECUTE DIRECT ON (data9) 'CREATE NODE data8 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18139)'" postgres
-psql -c "EXECUTE DIRECT ON (data9) 'ALTER NODE data9 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18140)'" postgres
+psql -c "EXECUTE DIRECT ON (data9) 'CREATE NODE data9 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18140)'" postgres
 psql -c "EXECUTE DIRECT ON (data9) 'CREATE NODE data10 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18141)'" postgres
 psql -c "EXECUTE DIRECT ON (data9) 'CREATE NODE data11 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18142)'" postgres
 psql -c "EXECUTE DIRECT ON (data9) 'CREATE NODE data12 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18143)'" postgres
@@ -318,7 +338,7 @@ psql -c "EXECUTE DIRECT ON (data10) 'CREATE NODE data6 WITH (TYPE = ''datanode''
 psql -c "EXECUTE DIRECT ON (data10) 'CREATE NODE data7 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18138)'" postgres
 psql -c "EXECUTE DIRECT ON (data10) 'CREATE NODE data8 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18139)'" postgres
 psql -c "EXECUTE DIRECT ON (data10) 'CREATE NODE data9 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18140)'" postgres
-psql -c "EXECUTE DIRECT ON (data10) 'ALTER NODE data10 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18141)'" postgres
+psql -c "EXECUTE DIRECT ON (data10) 'CREATE NODE data10 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18141)'" postgres
 psql -c "EXECUTE DIRECT ON (data10) 'CREATE NODE data11 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18142)'" postgres
 psql -c "EXECUTE DIRECT ON (data10) 'CREATE NODE data12 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18143)'" postgres
 psql -c "EXECUTE DIRECT ON (data10) 'CREATE NODE data13 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18144)'" postgres
@@ -337,7 +357,7 @@ psql -c "EXECUTE DIRECT ON (data11) 'CREATE NODE data7 WITH (TYPE = ''datanode''
 psql -c "EXECUTE DIRECT ON (data11) 'CREATE NODE data8 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18139)'" postgres
 psql -c "EXECUTE DIRECT ON (data11) 'CREATE NODE data9 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18140)'" postgres
 psql -c "EXECUTE DIRECT ON (data11) 'CREATE NODE data10 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18141)'" postgres
-psql -c "EXECUTE DIRECT ON (data11) 'ALTER NODE data11 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18142)'" postgres
+psql -c "EXECUTE DIRECT ON (data11) 'CREATE NODE data11 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18142)'" postgres
 psql -c "EXECUTE DIRECT ON (data11) 'CREATE NODE data12 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18143)'" postgres
 psql -c "EXECUTE DIRECT ON (data11) 'CREATE NODE data13 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18144)'" postgres
 psql -c "EXECUTE DIRECT ON (data11) 'CREATE NODE data14 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18145)'" postgres
@@ -356,7 +376,7 @@ psql -c "EXECUTE DIRECT ON (data12) 'CREATE NODE data8 WITH (TYPE = ''datanode''
 psql -c "EXECUTE DIRECT ON (data12) 'CREATE NODE data9 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18140)'" postgres
 psql -c "EXECUTE DIRECT ON (data12) 'CREATE NODE data10 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18141)'" postgres
 psql -c "EXECUTE DIRECT ON (data12) 'CREATE NODE data11 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18142)'" postgres
-psql -c "EXECUTE DIRECT ON (data12) 'ALTER NODE data12 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18143)'" postgres
+psql -c "EXECUTE DIRECT ON (data12) 'CREATE NODE data12 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18143)'" postgres
 psql -c "EXECUTE DIRECT ON (data12) 'CREATE NODE data13 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18144)'" postgres
 psql -c "EXECUTE DIRECT ON (data12) 'CREATE NODE data14 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18145)'" postgres
 psql -c "EXECUTE DIRECT ON (data12) 'CREATE NODE data15 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18146)'" postgres
@@ -375,7 +395,7 @@ psql -c "EXECUTE DIRECT ON (data13) 'CREATE NODE data9 WITH (TYPE = ''datanode''
 psql -c "EXECUTE DIRECT ON (data13) 'CREATE NODE data10 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18141)'" postgres
 psql -c "EXECUTE DIRECT ON (data13) 'CREATE NODE data11 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18142)'" postgres
 psql -c "EXECUTE DIRECT ON (data13) 'CREATE NODE data12 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18143)'" postgres
-psql -c "EXECUTE DIRECT ON (data13) 'ALTER NODE data13 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18144)'" postgres
+psql -c "EXECUTE DIRECT ON (data13) 'CREATE NODE data13 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18144)'" postgres
 psql -c "EXECUTE DIRECT ON (data13) 'CREATE NODE data14 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18145)'" postgres
 psql -c "EXECUTE DIRECT ON (data13) 'CREATE NODE data15 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18146)'" postgres
 psql -c "EXECUTE DIRECT ON (data13) 'CREATE NODE data16 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18147)'" postgres
@@ -394,7 +414,7 @@ psql -c "EXECUTE DIRECT ON (data14) 'CREATE NODE data10 WITH (TYPE = ''datanode'
 psql -c "EXECUTE DIRECT ON (data14) 'CREATE NODE data11 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18142)'" postgres
 psql -c "EXECUTE DIRECT ON (data14) 'CREATE NODE data12 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18143)'" postgres
 psql -c "EXECUTE DIRECT ON (data14) 'CREATE NODE data13 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18144)'" postgres
-psql -c "EXECUTE DIRECT ON (data14) 'ALTER NODE data14 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18145)'" postgres
+psql -c "EXECUTE DIRECT ON (data14) 'CREATE NODE data14 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18145)'" postgres
 psql -c "EXECUTE DIRECT ON (data14) 'CREATE NODE data15 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18146)'" postgres
 psql -c "EXECUTE DIRECT ON (data14) 'CREATE NODE data16 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18147)'" postgres
 
@@ -413,7 +433,7 @@ psql -c "EXECUTE DIRECT ON (data15) 'CREATE NODE data11 WITH (TYPE = ''datanode'
 psql -c "EXECUTE DIRECT ON (data15) 'CREATE NODE data12 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18143)'" postgres
 psql -c "EXECUTE DIRECT ON (data15) 'CREATE NODE data13 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18144)'" postgres
 psql -c "EXECUTE DIRECT ON (data15) 'CREATE NODE data14 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18145)'" postgres
-psql -c "EXECUTE DIRECT ON (data15) 'ALTER NODE data15 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18146)'" postgres
+psql -c "EXECUTE DIRECT ON (data15) 'CREATE NODE data15 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18146)'" postgres
 psql -c "EXECUTE DIRECT ON (data15) 'CREATE NODE data16 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18147)'" postgres
 
 psql -c "EXECUTE DIRECT ON (data16) 'CREATE NODE co1 WITH (TYPE = ''coordinator'', HOST=''127.0.0.1'', PORT = 1991)'" postgres
@@ -432,6 +452,23 @@ psql -c "EXECUTE DIRECT ON (data16) 'CREATE NODE data12 WITH (TYPE = ''datanode'
 psql -c "EXECUTE DIRECT ON (data16) 'CREATE NODE data13 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18144)'" postgres
 psql -c "EXECUTE DIRECT ON (data16) 'CREATE NODE data14 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18145)'" postgres
 psql -c "EXECUTE DIRECT ON (data16) 'CREATE NODE data15 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18146)'" postgres
+psql -c "EXECUTE DIRECT ON (data16) 'CREATE NODE data16 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18147)'" postgres
+
+psql -c "EXECUTE DIRECT ON (data1) 'ALTER NODE data1 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18132)'" postgres
+psql -c "EXECUTE DIRECT ON (data2) 'ALTER NODE data2 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18133)'" postgres
+psql -c "EXECUTE DIRECT ON (data3) 'ALTER NODE data3 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18134)'" postgres
+psql -c "EXECUTE DIRECT ON (data4) 'ALTER NODE data4 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18135)'" postgres
+psql -c "EXECUTE DIRECT ON (data5) 'ALTER NODE data5 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18136)'" postgres
+psql -c "EXECUTE DIRECT ON (data6) 'ALTER NODE data6 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18137)'" postgres
+psql -c "EXECUTE DIRECT ON (data7) 'ALTER NODE data7 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18138)'" postgres
+psql -c "EXECUTE DIRECT ON (data8) 'ALTER NODE data8 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18139)'" postgres
+psql -c "EXECUTE DIRECT ON (data9) 'ALTER NODE data9 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18140)'" postgres
+psql -c "EXECUTE DIRECT ON (data10) 'ALTER NODE data10 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18141)'" postgres
+psql -c "EXECUTE DIRECT ON (data11) 'ALTER NODE data11 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18142)'" postgres
+psql -c "EXECUTE DIRECT ON (data12) 'ALTER NODE data12 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18143)'" postgres
+psql -c "EXECUTE DIRECT ON (data13) 'ALTER NODE data13 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18144)'" postgres
+psql -c "EXECUTE DIRECT ON (data14) 'ALTER NODE data14 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18145)'" postgres
+psql -c "EXECUTE DIRECT ON (data15) 'ALTER NODE data15 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18146)'" postgres
 psql -c "EXECUTE DIRECT ON (data16) 'ALTER NODE data16 WITH (TYPE = ''datanode'', HOST=''127.0.0.1'', PORT = 18147)'" postgres
 
 psql -c "SELECT pgxc_pool_reload()" postgres
@@ -478,4 +515,3 @@ psql -c "copy (select md5(random()::text) from generate_series(1,250000000)) to 
 psql -c "set maintenance_work_mem='2GB'; create index idx_t_regexp_1 on t_regexp(info);" &
 psql -c "set maintenance_work_mem='2GB'; create index idx_t_regexp_2 on t_regexp(reverse(info));" &
 psql -c "set maintenance_work_mem='2GB'; create index idx_t_regexp_gin on t_regexp using gin(info gin_trgm_ops);" &
-
