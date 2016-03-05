@@ -101,6 +101,13 @@ initdb -D /disk1/digoal/pgxl/data16 -E UTF8 --locale=C -U postgres --nodename da
 
 . ./initxl.sh
 
+配置规则
+max_connections=100 -c max_prepared_transactions=100 必须大于datanode+coordinator数量.
+max_prepared_transactions 必须大于或等于 max_connections
+max_pool_size 是 max_connections的10倍
+max_datanodes 必须大于datanode+coordinator数量
+max_coordinators >= 实际的coordinator数量
+
 
 vi xlstart.sh
 gtm_ctl start -Z gtm -D /disk1/digoal/pgxl/gtm
