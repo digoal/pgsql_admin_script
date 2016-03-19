@@ -1247,8 +1247,6 @@ vi /etc/security/limits.conf
 * hard    nofile  655360
 * soft    nproc   655360
 * hard    nproc   655360
-* soft    core    unlimited
-* hard    core    unlimited
 * soft    memlock 500000000
 * hard    memlock 500000000
 ```
