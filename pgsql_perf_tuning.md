@@ -1184,13 +1184,12 @@ http://www.postgresql.org/docs/9.2/interactive/libpq-connect.html
 内核参数优化总结    
 以及每项配置的原理  
 ```  
-kernel.shmmax = 135497418752
+kernel.shmmax = 135497418752   # 最大共享内存段大小
 kernel.shmmni = 4096
 fs.file-max = 7672460
 fs.aio-max-nr = 1048576
 vm.zone_reclaim_mode=0   # 禁用 numa, 或者在vmlinux中禁止.
 vm.swappiness = 0     #  关闭交换分区
-kernel.shmmax=135497418752     # 最大共享内存段大小
 net.core.rmem_max = 4194304   # The maximum receive socket buffer size in bytes
 net.core.wmem_max = 4194304    # The maximum send socket buffer size in bytes.
 net.core.rmem_default = 262144   # The default setting of the socket receive buffer in bytes.
