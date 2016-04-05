@@ -1184,26 +1184,50 @@ http://www.postgresql.org/docs/9.2/interactive/libpq-connect.html
 内核参数优化总结    
 以及每项配置的原理  
 ```  
-kernel.shmmax = 135497418752   # 最大共享内存段大小
-kernel.shmmni = 4096
-fs.file-max = 7672460
-fs.aio-max-nr = 1048576
-vm.zone_reclaim_mode=0   # 禁用 numa, 或者在vmlinux中禁止.
-vm.swappiness = 0     #  关闭交换分区
+kernel.shmmax = 274877906944   # 最大共享内存段大小
+kernel.shmmni = 8192
+kernel.sem = 51200 150994944 512000 51200     # 信号量, ipcs -l查看
+kernel.core_pattern= /data01/corefiles/core_%e_%u_%t_%s.%p
+net.ipv4.tcp_keepalive_intvl=20
+net.ipv4.tcp_keepalive_probes=6
+net.ipv4.tcp_keepalive_time=60
+net.ipv4.tcp_synack_retries=2
+net.ipv4.tcp_syncookies=1
+net.ipv4.tcp_tw_recycle=0
+net.ipv4.tcp_tw_reuse=1
+net.ipv4.tcp_tw_timeout=3
+net.ipv4.ip_local_port_range = 9000 65535    # 本地自动分配的TCP UDP端口号范围
 net.core.rmem_max = 4194304   # The maximum receive socket buffer size in bytes
 net.core.wmem_max = 4194304    # The maximum send socket buffer size in bytes.
 net.core.rmem_default = 262144   # The default setting of the socket receive buffer in bytes.
 net.core.wmem_default = 262144   # The default setting (in bytes) of the socket send buffer.
-net.ipv4.ip_local_port_range = 9000 65535    # 本地自动分配的TCP UDP端口号范围
-kernel.sem = 501001 2117832704 501002 51200     # 信号量
-vm.dirty_background_bytes = 102400000      # 系统脏页到达这个值，系统后台刷脏页调度进程 pdflush（或其他） 自动将(dirty_expire_centisecs/100）秒前的脏页刷到磁盘
+fs.file-max = 7672460
+fs.aio-max-nr = 1048576
+vm.extra_free_kbytes=512000
+vm.min_free_kbytes=2097152
+vm.mmap_min_addr=4096
+vm.zone_reclaim_mode=0   # 禁用 numa, 或者在vmlinux中禁止.
+vm.swappiness = 0     #  关闭交换分区
+vm.dirty_background_bytes = 409600000      # 系统脏页到达这个值，系统后台刷脏页调度进程 pdflush（或其他） 自动将(dirty_expire_centisecs/100）秒前的脏页刷到磁盘
 vm.dirty_expire_centisecs = 6000    #  比这个值老的脏页，将被刷到磁盘。6000表示60秒。
 vm.dirty_writeback_centisecs = 50  # pdflush（或其他）后台刷脏页进程的唤醒间隔， 50表示0.5秒。
 vm.dirty_ratio = 80        #  如果系统进程刷脏页太慢，使得系统脏页超过内存 80 % 时，则用户进程如果有写磁盘的操作（如fsync, fdatasync等调用），则需要主动把系统脏页刷出。
 vm.nr_hugepages = 102352    #  大页数量，乘以/proc/meminfo Hugepagesize就是内存数量。
 vm.overcommit_memory = 0     #  在分配内存时，允许少量over malloc
 vm.overcommit_ratio = 90     #  当overcommit_memory = 2 时，用于参与计算允许指派的内存大小。
-```  
+```
+可选  
+```
+net.core.netdev_max_backlog=10000
+net.core.somaxconn=4096
+net.ipv4.tcp_fin_timeout=5
+net.ipv4.tcp_max_syn_backlog=4096
+net.ipv4.tcp_mem=8388608 12582912 16777216
+net.ipv4.tcp_rmem=8192 87380 16777216
+net.ipv4.tcp_wmem=8192 65536 16777216
+net.netfilter.nf_conntrack_max=1200000
+net.nf_conntrack_max=1200000
+```
 内存分配策略解释  
 参考   
 http://blog.163.com/digoal@126/blog/static/163877040201563044143325/  
@@ -1246,8 +1270,10 @@ vi /etc/security/limits.conf
 * hard    nofile  655360
 * soft    nproc   655360
 * hard    nproc   655360
-* soft    memlock 500000000
-* hard    memlock 500000000
+* soft    memlock unlimited
+* hard    memlock unlimited
+* soft    core    unlimited
+* hard    core    unlimited
 ```
 
 内核启动参数优化总结    
@@ -1257,7 +1283,7 @@ vi /etc/security/limits.conf
 kernel /vmlinuz-3.18.24 numa=off elevator=deadline intel_idle.max_cstate=0 scsi_mod.scan=sync  
 ```  
 
-块设备优化总结，预读  
+块设备优化总结，预读(适合greenplum, 不建议OLTP使用)  
 ```  
 blockdev --setra 16384 /dev/dfa  
 blockdev --setra 16384 /dev/dfb  
