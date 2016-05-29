@@ -50,8 +50,14 @@ echo ""
 echo "----->>>---->>>  主机名: "
 hostname -s
 echo ""
-echo "----->>>---->>>  主机网络信息: "
-ifconfig
+echo "----->>>---->>>  以太链路信息: "
+ip link show
+echo ""
+echo "----->>>---->>>  IP地址信息: "
+ip addr show
+echo ""
+echo "----->>>---->>>  路由信息: "
+ip route show
 echo ""
 echo "----->>>---->>>  操作系统内核: "
 uname -a
@@ -71,7 +77,7 @@ echo ""
 echo "----->>>---->>>  进程树: "
 pstree -a -A -c -l -n -p -u -U -Z
 echo ""
-echo "----->>>---->>>  操作系统配置: "
+echo "----->>>---->>>  操作系统配置文件 静态配置信息: "
 echo "----->>>---->>>  /etc/sysctl.conf "
 grep "^[a-z]" /etc/sysctl.conf
 echo ""
@@ -84,11 +90,51 @@ echo ""
 echo "----->>>---->>>  /etc/sysconfig/iptables "
 cat /etc/sysconfig/iptables
 echo ""
-echo "----->>>---->>>  sysctl -a 信息: "
+echo "----->>>---->>>  /etc/fstab "
+cat /etc/fstab
+echo ""
+echo "----->>>---->>>  /etc/rc.local "
+cat /etc/rc.local
+echo ""
+echo "----->>>---->>>  /etc/selinux/config "
+cat /etc/selinux/config
+echo ""
+echo "----->>>---->>>  /boot/grub/grub.conf "
+cat /boot/grub/grub.conf
+echo ""
+echo "----->>>---->>>  chkconfig --list "
+chkconfig --list
+echo ""
+echo "----->>>---->>>  iptables -L -v -n -t filter 动态配置信息: "
+iptables -L -v -n -t filter
+echo ""
+echo "----->>>---->>>  iptables -L -v -n -t nat 动态配置信息: "
+iptables -L -v -n -t nat
+echo ""
+echo "----->>>---->>>  iptables -L -v -n -t mangle 动态配置信息: "
+iptables -L -v -n -t mangle
+echo ""
+echo "----->>>---->>>  iptables -L -v -n -t raw 动态配置信息: "
+iptables -L -v -n -t raw
+echo ""
+echo "----->>>---->>>  sysctl -a 动态配置信息: "
 sysctl -a
 echo ""
+echo "----->>>---->>>  mount 动态配置信息: "
+mount -l
+echo ""
+echo "----->>>---->>>  selinux 动态配置信息: "
+getsebool
+sestatus
+echo ""
+echo "----->>>---->>>  建议禁用Transparent Huge Pages (THP): "
+cat /sys/kernel/mm/transparent_hugepage/enabled
+cat /sys/kernel/mm/transparent_hugepage/defrag
+cat /sys/kernel/mm/redhat_transparent_hugepage/enabled
+cat /sys/kernel/mm/redhat_transparent_hugepage/defrag
+echo ""
 echo "----->>>---->>>  硬盘SMART信息(需要root): "
-for i in `smartctl --scan|awk '{print $1}'`; do echo -e "\n\nDEVICE $i"; smartctl -x $i; done
+smartctl --scan|awk -F "#" '{print $1}' | while read i; do echo -e "\n\nDEVICE $i"; smartctl -x $i; done
 echo ""
 echo "----->>>---->>>  /var/log/boot.log "
 cat /var/log/boot.log
