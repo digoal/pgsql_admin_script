@@ -85,7 +85,7 @@ echo "----->>>---->>>  /etc/security/limits.conf "
 grep -v "^#" /etc/security/limits.conf|grep -v "^$"
 echo ""
 echo "----->>>---->>>  /etc/security/limits.d/*.conf "
-grep -v "^#" /etc/security/limits.d/*.conf|grep -v "^$"
+for dir in `ls /etc/security/limits.d`; do echo "/etc/security/limits.d/$dir : "; grep -v "^#" /etc/security/limits.d/$dir|grep -v "^$"; done 
 echo ""
 echo "----->>>---->>>  /etc/sysconfig/iptables "
 cat /etc/sysconfig/iptables
@@ -103,7 +103,7 @@ echo "----->>>---->>>  /boot/grub/grub.conf "
 cat /boot/grub/grub.conf
 echo ""
 echo "----->>>---->>>  /var/spool/cron 用户cron配置 "
-for dir in `ls /var/spool/cron`; do echo "$dir : "; cat /var/spool/cron/$dir; done 
+for dir in `ls /var/spool/cron`; do echo "/var/spool/cron/$dir : "; cat /var/spool/cron/$dir; done 
 echo ""
 echo "----->>>---->>>  chkconfig --list "
 chkconfig --list
