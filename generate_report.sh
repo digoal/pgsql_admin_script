@@ -102,6 +102,9 @@ echo ""
 echo "----->>>---->>>  /boot/grub/grub.conf "
 cat /boot/grub/grub.conf
 echo ""
+echo "----->>>---->>>  /var/spool/cron 用户cron配置 "
+for dir in `ls /var/spool/cron`; do echo "$dir : "; cat /var/spool/cron/$dir; done 
+echo ""
 echo "----->>>---->>>  chkconfig --list "
 chkconfig --list
 echo ""
