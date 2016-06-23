@@ -138,7 +138,7 @@ cat /sys/kernel/mm/redhat_transparent_hugepage/enabled
 cat /sys/kernel/mm/redhat_transparent_hugepage/defrag
 echo ""
 echo "----->>>---->>>  硬盘SMART信息(需要root): "
-smartctl --scan|awk -F "#" '{print $1}' | while read i; do echo -e "\n\nDEVICE $i"; smartctl -x $i; done
+smartctl --scan|awk -F "#" '{print $1}' | while read i; do echo -e "\n\nDEVICE $i"; smartctl -a $i; done
 echo ""
 echo "----->>>---->>>  /var/log/boot.log "
 cat /var/log/boot.log
