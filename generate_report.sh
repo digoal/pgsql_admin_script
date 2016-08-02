@@ -298,7 +298,7 @@ vi /etc/sysctl.conf
 # add by digoal.zhou
 fs.aio-max-nr = 1048576
 fs.file-max = 76724600
-kernel.core_pattern= /data01/corefiles/core_%e_%u_%t_%s.%p
+kernel.core_pattern= /data01/corefiles/core_%e_%u_%t_%s.%p         # /data01/corefiles事先建好，权限777
 kernel.sem = 4096 2147483647 2147483646 512000    # 信号量, ipcs -l 或 -u 查看，每16个进程一组，每组信号量需要17个信号量。
 kernel.shmall = 107374182      # 所有共享内存段相加大小限制(建议内存的80%)
 kernel.shmmax = 274877906944   # 最大单个共享内存段大小(建议为内存一半), >9.2的版本已大幅降低共享内存的使用
