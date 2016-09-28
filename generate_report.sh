@@ -342,9 +342,9 @@ vm.dirty_background_bytes = 409600000
 #  系统脏页到达这个值，系统后台刷脏页调度进程 pdflush（或其他） 自动将(dirty_expire_centisecs/100）秒前的脏页刷到磁盘
 vm.dirty_expire_centisecs = 3000             
 #  比这个值老的脏页，将被刷到磁盘。3000表示30秒。
-vm.dirty_ratio = 100                          
-#  如果系统进程刷脏页太慢，使得系统脏页超过内存 100 % 时，则用户进程如果有写磁盘的操作（如fsync, fdatasync等调用），则需要主动把系统脏页刷出。
-#  防止用户进程刷脏页，在单机多实例，并且使用CGROUP限制单实例IOPS的情况下非常有效。  
+vm.dirty_ratio = 95                          
+#  如果系统进程刷脏页太慢，使得系统脏页超过内存 95 % 时，则用户进程如果有写磁盘的操作（如fsync, fdatasync等调用），则需要主动把系统脏页刷出。
+#  有效防止用户进程刷脏页，在单机多实例，并且使用CGROUP限制单实例IOPS的情况下非常有效。  
 vm.dirty_writeback_centisecs = 100            
 #  pdflush（或其他）后台刷脏页进程的唤醒间隔， 100表示1秒。
 vm.extra_free_kbytes = 4096000
