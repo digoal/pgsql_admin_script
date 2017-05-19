@@ -993,6 +993,14 @@ from t_wait w,t_run r where
     else 0
   end  )) desc,r.xact_start;
 EOF
+# 
+# select t2.*, t1.* from 
+# (select pid,locktype,mode,relation::regclass,page,tuple,(select to_char(xact_start,'yyyymmdd hh24:mi:ss')||'____'||waiting||'____'||state||'____'||query from pg_stat_activity where pid=pg_locks.pid) query from pg_locks where not granted) t1
+# join
+# (select pid,locktype,mode,relation::regclass,page,tuple,(select to_char(xact_start,'yyyymmdd hh24:mi:ss')||'____'||waiting||'____'||state||'____'||query from pg_stat_activity where pid=pg_locks.pid) query from pg_locks where granted) t2
+# on ( t1.locktype is not distinct from t2.locktype and t1.relation is not distinct from t2.relation)
+# order by t2.query;
+#
 echo "建议: "
 echo "    锁等待状态, 反映业务逻辑的问题或者SQL性能有问题, 建议深入排查持锁的SQL. "
 echo -e "\n"
