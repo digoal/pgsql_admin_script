@@ -961,10 +961,11 @@ t_overlap as
     r.relation is not distinct from w.relation and 
     r.page is not distinct from w.page and 
     r.tuple is not distinct from w.tuple and 
+    r.virtualxid is not distinct from w.virtualxid and 
+    r.transactionid is not distinct from w.transactionid and 
     r.classid is not distinct from w.classid and 
     r.objid is not distinct from w.objid and 
     r.objsubid is not distinct from w.objsubid and 
-    r.transactionid is not distinct from w.transactionid and 
     r.pid <> w.pid 
   )  
 ),  
