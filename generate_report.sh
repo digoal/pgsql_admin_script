@@ -981,7 +981,8 @@ string_agg(
 'Lock_Granted: '||case when granted is null then 'NULL' else granted::text end||' , Mode: '||case when mode is null then 'NULL' else mode::text end||' , FastPath: '||case when fastpath is null then 'NULL' else fastpath::text end||' , VirtualTransaction: '||case when virtualtransaction is null then 'NULL' else virtualtransaction::text end||' , Session_State: '||case when state is null then 'NULL' else state::text end||chr(10)||   
 'Username: '||case when usename is null then 'NULL' else usename::text end||' , Database: '||case when datname is null then 'NULL' else datname::text end||' , Client_Addr: '||case when client_addr is null then 'NULL' else client_addr::text end||' , Client_Port: '||case when client_port is null then 'NULL' else client_port::text end||' , Application_Name: '||case when application_name is null then 'NULL' else application_name::text end||chr(10)||    
 'Xact_Start: '||case when xact_start is null then 'NULL' else xact_start::text end||' , Query_Start: '||case when query_start is null then 'NULL' else query_start::text end||' , Xact_Elapse: '||case when (now()-xact_start) is null then 'NULL' else (now()-xact_start)::text end||' , Query_Elapse: '||case when (now()-query_start) is null then 'NULL' else (now()-query_start)::text end||chr(10)||    
-'Query: '||case when query is null then 'NULL' else query::text end,    
+'SQL (Current SQL in Transaction): '||chr(10)||  
+case when query is null then 'NULL' else query::text end,    
 chr(10)||'--------'||chr(10)    
 order by    
   (  case mode    
@@ -996,11 +997,11 @@ order by
     when 'AccessExclusiveLock' then 8   
     else 0   
   end  ) desc,   
-  (case when granted then 0 else 1 end)    
+  (case when granted then 0 else 1 end)  
 ) as lock_conflict  
 from t_unionall   
 group by   
-locktype,datname,relation,page,tuple,virtualxid,transactionid::text,classid,objid,objsubid ;    
+locktype,datname,relation,page,tuple,virtualxid,transactionid::text,classid,objid,objsubid ;   
 EOF
 echo "建议: "
 echo "    锁等待状态, 反映业务逻辑的问题或者SQL性能有问题, 建议深入排查持锁的SQL. "
