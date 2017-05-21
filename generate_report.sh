@@ -937,70 +937,69 @@ echo -e "\n"
 
 echo "----->>>---->>>  锁等待: "
 psql -x --pset=pager=off <<EOF
-with t_wait as                     
-(select a.mode,a.locktype,a.database,a.relation,a.page,a.tuple,a.classid,
-a.objid,a.objsubid,a.pid,a.virtualtransaction,a.virtualxid,a,
-transactionid,b.query,b.xact_start,b.query_start,b.usename,b.datname 
-  from pg_locks a,pg_stat_activity b where a.pid=b.pid and not a.granted),
+with  
+t_wait as  
+(  
+  select a.mode,a.locktype,a.database,a.relation,a.page,a.tuple,a.classid,a.granted, 
+  a.objid,a.objsubid,a.pid,a.virtualtransaction,a.virtualxid,a.transactionid,a.fastpath,  
+  b.state,b.query,b.xact_start,b.query_start,b.usename,b.datname 
+    from pg_locks a,pg_stat_activity b where a.pid=b.pid and not a.granted 
+), 
 t_run as 
-(select a.mode,a.locktype,a.database,a.relation,a.page,a.tuple,
-a.classid,a.objid,a.objsubid,a.pid,a.virtualtransaction,a.virtualxid,
-a,transactionid,b.query,b.xact_start,b.query_start,
-b.usename,b.datname from pg_locks a,pg_stat_activity b where 
-a.pid=b.pid and a.granted) 
-select r.locktype,r.mode r_mode,r.usename r_user,r.datname r_db,
-r.relation::regclass,r.pid r_pid,
-r.page r_page,r.tuple r_tuple,r.xact_start r_xact_start,
-r.query_start r_query_start,
-now()-r.query_start r_locktime,r.query r_query,w.mode w_mode,
-w.pid w_pid,w.page w_page,
-w.tuple w_tuple,w.xact_start w_xact_start,w.query_start w_query_start,
-now()-w.query_start w_locktime,w.query w_query  
-from t_wait w,t_run r where
-  r.locktype is not distinct from w.locktype and
-  r.database is not distinct from w.database and
-  r.relation is not distinct from w.relation and
-  r.page is not distinct from w.page and
-  r.tuple is not distinct from w.tuple and
-  r.classid is not distinct from w.classid and
-  r.objid is not distinct from w.objid and
-  r.objsubid is not distinct from w.objsubid and
-  r.transactionid is not distinct from w.transactionid and
-  r.pid <> w.pid
-  order by 
-  ((  case w.mode
-    when 'INVALID' then 0
-    when 'AccessShareLock' then 1
-    when 'RowShareLock' then 2
-    when 'RowExclusiveLock' then 3
-    when 'ShareUpdateExclusiveLock' then 4
-    when 'ShareLock' then 5
-    when 'ShareRowExclusiveLock' then 6
-    when 'ExclusiveLock' then 7
-    when 'AccessExclusiveLock' then 8
-    else 0
-  end  ) + 
-  (  case r.mode
-    when 'INVALID' then 0
-    when 'AccessShareLock' then 1
-    when 'RowShareLock' then 2
-    when 'RowExclusiveLock' then 3
-    when 'ShareUpdateExclusiveLock' then 4
-    when 'ShareLock' then 5
-    when 'ShareRowExclusiveLock' then 6
-    when 'ExclusiveLock' then 7
-    when 'AccessExclusiveLock' then 8
-    else 0
-  end  )) desc,r.xact_start;
+( 
+  select a.mode,a.locktype,a.database,a.relation,a.page,a.tuple,a.classid,a.granted, 
+  a.objid,a.objsubid,a.pid,a.virtualtransaction,a.virtualxid,a.transactionid,a.fastpath, 
+  b.state,b.query,b.xact_start,b.query_start,b.usename,b.datname 
+    from pg_locks a,pg_stat_activity b where a.pid=b.pid and a.granted 
+), 
+t_overlap as 
+( 
+  select r.* from t_wait w join t_run r on 
+  ( 
+    r.locktype is not distinct from w.locktype and 
+    r.database is not distinct from w.database and 
+    r.relation is not distinct from w.relation and 
+    r.page is not distinct from w.page and 
+    r.tuple is not distinct from w.tuple and 
+    r.classid is not distinct from w.classid and 
+    r.objid is not distinct from w.objid and 
+    r.objsubid is not distinct from w.objsubid and 
+    r.transactionid is not distinct from w.transactionid and 
+    r.pid <> w.pid 
+  )  
+),  
+t_unionall as  
+(  
+  select r.* from t_overlap r  
+  union all  
+  select w.* from t_wait w  
+)  
+select locktype,datname,relation::regclass,page,tuple,virtualxid,transactionid::text,classid::regclass,objid,objsubid, 
+string_agg( 
+'Pid: '||pid||chr(10)|| 
+'Granted: '||granted||' , Mode: '||mode||' , FastPath: '||fastpath||' , VirtualTransaction: '||virtualtransaction||' , Session_State: '||state||chr(10)|| 
+'Username: '||usename||' , Database: '||datname||' , Xact_Start: '||xact_start||' , Query_Start: '||query_start||' , Xact_Elapse: '||now()-xact_start||' , Query_Elapse: '||now()-query_start||chr(10)||  
+'Query: '||query,  
+chr(10)||'--------'||chr(10)  
+order by  
+  (  case mode  
+    when 'INVALID' then 0 
+    when 'AccessShareLock' then 1 
+    when 'RowShareLock' then 2 
+    when 'RowExclusiveLock' then 3 
+    when 'ShareUpdateExclusiveLock' then 4 
+    when 'ShareLock' then 5 
+    when 'ShareRowExclusiveLock' then 6 
+    when 'ExclusiveLock' then 7 
+    when 'AccessExclusiveLock' then 8 
+    else 0 
+  end  ) desc, 
+  (case when granted then 0 else 1 end)  
+) 
+from t_unionall 
+group by 
+locktype,datname,relation,page,tuple,virtualxid,transactionid::text,classid,objid,objsubid ;
 EOF
-# 
-# select t2.*, t1.* from 
-# (select pid,locktype,mode,relation::regclass,page,tuple,(select to_char(xact_start,'yyyymmdd hh24:mi:ss')||'____'||waiting||'____'||state||'____'||query from pg_stat_activity where pid=pg_locks.pid) query from pg_locks where not granted) t1
-# join
-# (select pid,locktype,mode,relation::regclass,page,tuple,(select to_char(xact_start,'yyyymmdd hh24:mi:ss')||'____'||waiting||'____'||state||'____'||query from pg_stat_activity where pid=pg_locks.pid) query from pg_locks where granted) t2
-# on ( t1.locktype is not distinct from t2.locktype and t1.relation is not distinct from t2.relation)
-# order by t2.query;
-#
 echo "建议: "
 echo "    锁等待状态, 反映业务逻辑的问题或者SQL性能有问题, 建议深入排查持锁的SQL. "
 echo -e "\n"
